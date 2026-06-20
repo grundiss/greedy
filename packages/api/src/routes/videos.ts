@@ -11,7 +11,6 @@ import type {
 } from '@greedy/shared';
 import { asc, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { db } from '../db/index.js';
 import { globalUpdates, updates, videos } from '../db/schema.js';
 import type {
   GlobalUpdate as GlobalUpdateRow,
@@ -109,7 +108,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ error: 'BadRequest', message: 'invalid recordedAt' });
     }
 
-    const [row] = await db.insert(globalUpdates).values({ recordedAt, followers }).returning();
+    const [row] = await app.db.insert(globalUpdates).values({ recordedAt, followers }).returning();
 
     reply.code(201);
     return serializeGlobalUpdate(row!);
@@ -117,7 +116,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
 
   // List account-level updates, oldest first.
   app.get('/global-updates', async (): Promise<GlobalUpdate[]> => {
-    const rows = await db.select().from(globalUpdates).orderBy(asc(globalUpdates.recordedAt));
+    const rows = await app.db.select().from(globalUpdates).orderBy(asc(globalUpdates.recordedAt));
     return rows.map(serializeGlobalUpdate);
   });
 
