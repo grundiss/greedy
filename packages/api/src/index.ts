@@ -1,29 +1,28 @@
-import cors from '@fastify/cors';
-import type { HealthResponse } from '@greedy/shared';
-import Fastify from 'fastify';
 import { config } from './config.js';
-import { videoRoutes } from './routes/videos.js';
+import { createPostgresDb } from './db/postgres.js';
+import { startServer } from './server.js';
 
-const app = Fastify({
-  logger: {
-    transport:
-      config.nodeEnv === 'development'
-        ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }
-        : undefined,
-  },
-});
-
-await app.register(cors, { origin: true });
-
-app.get('/health', async (): Promise<HealthResponse> => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-await app.register(videoRoutes);
+// Standalone server entry (dev/Docker/server). The desktop build embeds the
+// app differently — it calls startServer() itself with a PGlite db.
+const db = createPostgresDb(config.databaseUrl);
 
 try {
-  await app.listen({ port: config.port, host: config.host });
+  await startServer({
+    db,
+    host: config.host,
+    port: config.port,
+    enableCors: true,
+    logger:
+      config.nodeEnv === 'development'
+        ? {
+            transport: {
+              target: 'pino-pretty',
+              options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
+            },
+          }
+        : true,
+  });
 } catch (err) {
-  app.log.error(err);
+  console.error(err);
   process.exit(1);
 }

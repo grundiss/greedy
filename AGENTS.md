@@ -20,14 +20,29 @@ The app has two modes:
 
 TypeScript monorepo (Yarn workspaces). Three packages under `packages/`:
 
-| Package   | Name             | Role                                                        |
-| --------- | ---------------- | ----------------------------------------------------------- |
-| `shared/` | `@greedy/shared` | DTOs/types shared by api + web. Built to `dist/` (watched). |
-| `api/`    | `@greedy/api`    | Fastify server + Drizzle schema/migrations (Postgres).      |
-| `web/`    | `@greedy/web`    | React 19 + Vite + Tailwind v4 frontend.                     |
+| Package    | Name              | Role                                                        |
+| ---------- | ----------------- | ----------------------------------------------------------- |
+| `shared/`  | `@greedy/shared`  | DTOs/types shared by api + web. Built to `dist/` (watched). |
+| `api/`     | `@greedy/api`     | Fastify server + Drizzle schema/migrations.                 |
+| `web/`     | `@greedy/web`     | React 19 + Vite + Tailwind v4 frontend.                     |
+| `desktop/` | `@greedy/desktop` | Electron wrapper → auto-updating macOS app.                 |
 
-Everything runs in Docker Compose for dev (postgres + shared + api + web) with
-hot reload. See `README.md` for the full dev-mode explanation.
+Dev runs in Docker Compose (postgres + shared + api + web) with hot reload. The
+**desktop build** is a separate target: Electron embeds the Fastify server and
+serves the SPA from one loopback origin, swapping Postgres for **PGlite**
+(embedded WASM Postgres) under the app's `userData`. See `README.md` for both.
+
+## Two DB drivers, one app
+
+The API is driver-agnostic. `buildApp({ db, ... })`
+([`src/app.ts`](packages/api/src/app.ts)) decorates the injected Drizzle db onto
+Fastify, so routes use **`app.db`** — never a module singleton. Concrete drivers:
+`createPostgresDb` ([`src/db/postgres.ts`](packages/api/src/db/postgres.ts), dev/server)
+and `createPgliteDb` ([`src/db/pglite.ts`](packages/api/src/db/pglite.ts), desktop).
+Both speak the `pg-core` dialect, so queries and the `drizzle/` migrations are
+identical across them. `startServer()` ([`src/server.ts`](packages/api/src/server.ts))
+listens and resolves the real bound port (the desktop binds `port: 0`).
+[`src/index.ts`](packages/api/src/index.ts) is the standalone (Postgres) entry.
 
 ## Core domain model
 

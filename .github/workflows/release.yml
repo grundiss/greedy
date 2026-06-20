@@ -1,0 +1,49 @@
+name: Release desktop app
+
+# Build + publish the macOS desktop app whenever a version tag is pushed.
+#   git tag v1.2.3 && git push origin v1.2.3
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # needed to create the GitHub Release + upload artifacts
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build (shared → api → web → desktop)
+        env:
+          # Same-origin: the SPA fetches relative paths from the embedded server.
+          VITE_API_URL: ''
+        run: |
+          yarn workspace @greedy/shared build
+          yarn workspace @greedy/api build
+          yarn workspace @greedy/web build
+          yarn workspace @greedy/desktop build
+
+      - name: Package + publish to GitHub Releases
+        run: yarn workspace @greedy/desktop dist:publish
+        env:
+          # Used by electron-builder to create the release and upload assets.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # --- Code signing + notarization (optional; unset = unsigned build) ---
+          # Add these repo secrets to enable a signed, notarized, auto-updatable
+          # build (also flip identity/notarize in electron-builder.yml):
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}

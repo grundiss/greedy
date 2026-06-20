@@ -1,0 +1,49 @@
+appId: org.oneday.greedy
+productName: Greedy
+copyright: © OneDay
+
+# Pinned explicitly: with Yarn-workspace hoisting, electron lives in the root
+# node_modules and electron-builder can't auto-detect its version. Keep in sync
+# with the electron devDependency.
+electronVersion: 42.4.1
+
+directories:
+  output: release
+  buildResources: build
+
+# No native modules (PGlite is pure WASM), so nothing to rebuild.
+npmRebuild: false
+
+# PGlite ships .wasm / .data assets that must live on the real filesystem,
+# not inside the asar archive.
+asarUnpack:
+  - '**/node_modules/@electric-sql/pglite/**'
+
+# The built SPA and the SQL migrations are read at runtime from
+# process.resourcesPath (see src/main.ts resolveResources()).
+extraResources:
+  - from: ../web/dist
+    to: web
+  - from: ../api/drizzle
+    to: drizzle
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: universal
+    - target: zip # electron-updater applies updates from the .zip, not the .dmg
+      arch: universal
+  # --- Unsigned for now ---
+  # macOS auto-update will NOT apply until the app is signed + notarized.
+  # To enable later: remove `identity: null`, set `notarize: true` and
+  # `hardenedRuntime: true`, and provide the signing/notarization secrets in CI
+  # (CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY/APPLE_API_KEY_ID/APPLE_API_ISSUER).
+  identity: null
+  notarize: false
+
+# Auto-update feed. electron-builder also generates latest-mac.yml here.
+publish:
+  provider: github
+  owner: grundiss
+  repo: greedy
