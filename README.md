@@ -16,9 +16,10 @@ Monorepo web app: Fastify backend + React frontend, sharing TypeScript types.
 
 ```
 packages/
-  shared/   @greedy/shared  — types shared by api + web (built to dist)
-  api/      @greedy/api      — Fastify server + Drizzle schema/migrations
-  web/      @greedy/web      — React + Vite + Tailwind frontend
+  shared/   @greedy/shared   — types shared by api + web (built to dist)
+  api/      @greedy/api       — Fastify server + Drizzle schema/migrations
+  web/      @greedy/web       — React + Vite + Tailwind frontend
+  desktop/  @greedy/desktop   — Electron wrapper (macOS app, auto-updating)
 ```
 
 ## Getting started
@@ -75,7 +76,34 @@ published), so the stack needs to be `up` first.
 - **Env**: one `.env` at the repo root. Compose overrides `DATABASE_URL` to point at
   the `postgres` service; the browser reaches the API via the published port.
 
+## Desktop app (macOS)
+
+Greedy ships as a downloadable macOS app — no Docker, no Postgres, no setup for the
+end user. The Electron main process (`@greedy/desktop`) **embeds the Fastify server
+in-process**, which serves both the API and the built SPA from one loopback origin, and
+swaps PostgreSQL for **PGlite** (embedded WASM Postgres) stored under the app's
+`userData` directory. The existing schema and Drizzle migrations run unchanged.
+
+```bash
+yarn desktop:dev    # build shared/api/web (same-origin) + launch the Electron app
+yarn desktop:dist   # build a .dmg + .zip locally (release/ dir), unsigned
+```
+
+- **Dev stays a web app.** `yarn dev` (Docker + Postgres + Vite) is unchanged. The
+  desktop build is a separate target; the API supports both DB drivers via an injected
+  connection (`createPostgresDb` / `createPgliteDb`).
+- **Releases & auto-update.** Pushing a `v*` tag runs
+  [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds on
+  `macos-latest` and publishes `.dmg`, `.zip`, and `latest-mac.yml` to a GitHub Release.
+  The app checks that feed via `electron-updater` on launch.
+- ⚠️ **Code signing is off for now.** Until the app is signed + notarized with an Apple
+  Developer ID, users must right-click → **Open** past Gatekeeper on first launch, and
+  **macOS auto-update will not apply** (the update downloads but Squirrel.Mac refuses it).
+  To enable: add the signing secrets in CI and flip `identity`/`notarize` in
+  [`packages/desktop/electron-builder.yml`](packages/desktop/electron-builder.yml) — no
+  other code changes needed.
+
 ## Notes
 
 - **Formatting**: a Husky `pre-commit` hook runs `lint-staged` (Prettier) on staged files.
-- **Docker Compose**: local dev only. In production each service is deployed separately.
+- **Docker Compose**: local dev only (for the web app). The desktop build uses PGlite.

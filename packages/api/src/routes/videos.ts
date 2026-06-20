@@ -123,7 +123,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
 
   // List videos, newest first.
   app.get('/videos', async (): Promise<Video[]> => {
-    const rows = await db.select().from(videos).orderBy(desc(videos.createdAt));
+    const rows = await app.db.select().from(videos).orderBy(desc(videos.createdAt));
     return rows.map(serializeVideo);
   });
 
@@ -136,7 +136,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({ error: 'BadRequest', message: 'title is required' });
     }
 
-    const [row] = await db
+    const [row] = await app.db
       .insert(videos)
       .values({
         title,
@@ -160,12 +160,12 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
     '/videos/:id',
     async (request, reply): Promise<VideoWithUpdates | undefined> => {
       const id = Number(request.params.id);
-      const [video] = await db.select().from(videos).where(eq(videos.id, id));
+      const [video] = await app.db.select().from(videos).where(eq(videos.id, id));
       if (!video) {
         reply.code(404);
         return reply.send({ error: 'NotFound', message: 'video not found' });
       }
-      const rows = await db
+      const rows = await app.db
         .select()
         .from(updates)
         .where(eq(updates.videoId, id))
@@ -177,7 +177,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
   // Delete a video (cascades to its updates).
   app.delete<{ Params: { id: string } }>('/videos/:id', async (request, reply) => {
     const id = Number(request.params.id);
-    await db.delete(videos).where(eq(videos.id, id));
+    await app.db.delete(videos).where(eq(videos.id, id));
     reply.code(204);
     return reply.send();
   });
@@ -187,7 +187,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
     '/videos/:id/updates',
     async (request, reply): Promise<Update | undefined> => {
       const id = Number(request.params.id);
-      const [video] = await db.select().from(videos).where(eq(videos.id, id));
+      const [video] = await app.db.select().from(videos).where(eq(videos.id, id));
       if (!video) {
         reply.code(404);
         return reply.send({ error: 'NotFound', message: 'video not found' });
@@ -213,7 +213,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ error: 'BadRequest', message: 'invalid recordedAt' });
       }
 
-      const [row] = await db
+      const [row] = await app.db
         .insert(updates)
         .values({ videoId: id, recordedAt, likes, saves, depthPct })
         .returning();
@@ -226,7 +226,7 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
   // List updates for a video, oldest first.
   app.get<{ Params: { id: string } }>('/videos/:id/updates', async (request): Promise<Update[]> => {
     const id = Number(request.params.id);
-    const rows = await db
+    const rows = await app.db
       .select()
       .from(updates)
       .where(eq(updates.videoId, id))
