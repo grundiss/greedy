@@ -1,0 +1,17 @@
+# Shared dev image for all workspaces (api, web, shared).
+# Source is bind-mounted at runtime; this image only carries installed deps.
+FROM node:24-slim
+
+RUN corepack enable
+
+WORKDIR /app
+
+# Install deps using only manifests for better layer caching.
+COPY package.json yarn.lock ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/api/package.json ./packages/api/
+COPY packages/web/package.json ./packages/web/
+
+RUN yarn install --frozen-lockfile
+
+# Source is provided via bind mount in docker-compose; nothing else to copy.

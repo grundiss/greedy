@@ -1,0 +1,81 @@
+# Shared config for the app services (shared/api/web).
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+  # Bind-mount the whole repo for hot reload; mask every node_modules with
+  # anonymous volumes so the container uses the Linux deps baked into the
+  # image rather than the host's (macOS) ones.
+  volumes:
+    - .:/app
+    - /app/node_modules
+    - /app/packages/shared/node_modules
+    - /app/packages/api/node_modules
+    - /app/packages/web/node_modules
+  environment: &app-env # File watching over bind mounts on macOS/Windows needs polling.
+    CHOKIDAR_USEPOLLING: 'true'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: greedy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: greedy
+      POSTGRES_PASSWORD: greedy
+      POSTGRES_DB: greedy
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U greedy -d greedy']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Compiles @greedy/shared to dist and watches for changes.
+  shared:
+    <<: *app
+    container_name: greedy-shared
+    command: yarn workspace @greedy/shared dev
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/app/packages/shared/dist/index.js']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  api:
+    <<: *app
+    container_name: greedy-api
+    command: yarn workspace @greedy/api dev
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgres://greedy:greedy@postgres:5432/greedy
+      PORT: '3000'
+      HOST: '0.0.0.0'
+      NODE_ENV: development
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      shared:
+        condition: service_healthy
+
+  web:
+    <<: *app
+    container_name: greedy-web
+    command: yarn workspace @greedy/web dev --host
+    environment:
+      <<: *app-env
+      # Browser runs on the host, so it reaches the API via the mapped port.
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - '5173:5173'
+    depends_on:
+      shared:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
