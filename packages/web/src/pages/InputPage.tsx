@@ -32,6 +32,7 @@ export function InputPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
+      <LogGlobalUpdateForm />
       <LogUpdateForm videos={videos} />
       <AddVideoForm onCreated={refreshVideos} />
     </div>
@@ -39,6 +40,82 @@ export function InputPage() {
 }
 
 // ---------------------------------------------------------------------------
+
+function LogGlobalUpdateForm() {
+  const [followers, setFollowers] = useState('');
+  const [backdate, setBackdate] = useState(false);
+  const [recordedAt, setRecordedAt] = useState('');
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+
+    if (followers.trim() === '') {
+      setMsg({ kind: 'err', text: 'Enter the current follower count' });
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await api.addGlobalUpdate({
+        followers: Number(followers),
+        recordedAt: backdate && recordedAt ? new Date(recordedAt).toISOString() : undefined,
+      });
+      setMsg({ kind: 'ok', text: 'Global update saved ✓' });
+      setFollowers('');
+    } catch (err) {
+      setMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Failed' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="Log a global update">
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <p className="text-xs text-slate-400">
+          Track account-level numbers that are not tied to a single video.
+        </p>
+
+        <Field label="Current followers">
+          <TextInput
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="e.g. 12000"
+            value={followers}
+            onChange={(e) => setFollowers(e.target.value)}
+          />
+        </Field>
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={backdate}
+            onChange={(e) => setBackdate(e.target.checked)}
+          />
+          Backdate this update
+        </label>
+        {backdate ? (
+          <Field label="Recorded at">
+            <TextInput
+              type="datetime-local"
+              value={recordedAt}
+              onChange={(e) => setRecordedAt(e.target.value)}
+            />
+          </Field>
+        ) : null}
+
+        {msg ? <Banner kind={msg.kind} text={msg.text} /> : null}
+        <Button type="submit" disabled={busy}>
+          {busy ? 'Saving…' : 'Save global update'}
+        </Button>
+      </form>
+    </Card>
+  );
+}
 
 function LogUpdateForm({ videos }: { videos: Video[] }) {
   const [videoId, setVideoId] = useState<string>('');

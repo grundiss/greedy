@@ -1,4 +1,4 @@
-import type { Update, Video, VideoWithUpdates } from '@greedy/shared';
+import type { GlobalUpdate, Update, Video, VideoWithUpdates } from '@greedy/shared';
 import { useEffect, useMemo, useState } from 'react';
 import {
   CartesianGrid,
@@ -33,9 +33,17 @@ export function ReportsPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [videoId, setVideoId] = useState<string>('');
   const [data, setData] = useState<VideoWithUpdates | null>(null);
+  const [globalUpdates, setGlobalUpdates] = useState<GlobalUpdate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    api
+      .listGlobalUpdates()
+      .then(setGlobalUpdates)
+      .catch((e: unknown) =>
+        setError(e instanceof Error ? e.message : 'Failed to load global updates'),
+      );
+
     api
       .listVideos()
       .then((vs) => {
@@ -72,6 +80,8 @@ export function ReportsPage() {
       </Card>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      <GlobalUpdateChart updates={globalUpdates} />
 
       {data ? (
         <>
@@ -116,6 +126,41 @@ function MetricChart({ metric, updates }: { metric: (typeof METRICS)[number]; up
               type="monotone"
               dataKey="value"
               stroke={metric.color}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </Card>
+  );
+}
+
+function GlobalUpdateChart({ updates }: { updates: GlobalUpdate[] }) {
+  const points = useMemo(
+    () => updates.map((u) => ({ t: u.recordedAt, value: u.followers })),
+    [updates],
+  );
+
+  return (
+    <Card title="Followers">
+      {points.length === 0 ? (
+        <p className="py-8 text-center text-sm text-slate-400">No global updates yet</p>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={points} margin={{ top: 8, right: 12, bottom: 8, left: -8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="t" tickFormatter={formatTime} tick={{ fontSize: 11 }} minTickGap={24} />
+            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+            <Tooltip
+              labelFormatter={(v) => formatTime(String(v))}
+              formatter={(value) => [String(value), 'Followers']}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#16a34a"
               strokeWidth={2}
               dot={{ r: 3 }}
               activeDot={{ r: 5 }}

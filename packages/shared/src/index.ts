@@ -53,6 +53,13 @@ export interface Update {
   createdAt: string;
 }
 
+export interface GlobalUpdate {
+  id: number;
+  recordedAt: string;
+  followers: number;
+  createdAt: string;
+}
+
 // A partial update: at least one metric must be present. `recordedAt` defaults
 // to "now" on the server when omitted.
 export interface NewUpdateInput {
@@ -60,6 +67,11 @@ export interface NewUpdateInput {
   likes?: number | null;
   saves?: number | null;
   depthPct?: number | null;
+}
+
+export interface NewGlobalUpdateInput {
+  recordedAt?: string;
+  followers: number;
 }
 
 export interface VideoWithUpdates extends Video {

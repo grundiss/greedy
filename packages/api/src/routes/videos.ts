@@ -1,5 +1,7 @@
 import type {
   HookType,
+  GlobalUpdate,
+  NewGlobalUpdateInput,
   NewUpdateInput,
   NewVideoInput,
   SoundType,
@@ -9,8 +11,12 @@ import type {
 } from '@greedy/shared';
 import { asc, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { updates, videos } from '../db/schema.js';
-import type { Update as UpdateRow, Video as VideoRow } from '../db/schema.js';
+import { globalUpdates, updates, videos } from '../db/schema.js';
+import type {
+  GlobalUpdate as GlobalUpdateRow,
+  Update as UpdateRow,
+  Video as VideoRow,
+} from '../db/schema.js';
 
 function serializeVideo(row: VideoRow): Video {
   return {
@@ -36,6 +42,15 @@ function serializeUpdate(row: UpdateRow): Update {
     likes: row.likes,
     saves: row.saves,
     depthPct: row.depthPct,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function serializeGlobalUpdate(row: GlobalUpdateRow): GlobalUpdate {
+  return {
+    id: row.id,
+    recordedAt: row.recordedAt.toISOString(),
+    followers: row.followers,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -78,6 +93,33 @@ function toDateOrNull(value: unknown): Date | null {
 }
 
 export async function videoRoutes(app: FastifyInstance): Promise<void> {
+  // Log an account-level update, such as the current follower count.
+  app.post('/global-updates', async (request, reply): Promise<GlobalUpdate | undefined> => {
+    const body = (request.body ?? {}) as NewGlobalUpdateInput;
+    const followers = toIntOrNull(body.followers);
+    if (followers === null || followers < 0) {
+      reply.code(400);
+      return reply.send({ error: 'BadRequest', message: 'followers is required' });
+    }
+
+    const recordedAt = body.recordedAt ? new Date(body.recordedAt) : new Date();
+    if (Number.isNaN(recordedAt.getTime())) {
+      reply.code(400);
+      return reply.send({ error: 'BadRequest', message: 'invalid recordedAt' });
+    }
+
+    const [row] = await app.db.insert(globalUpdates).values({ recordedAt, followers }).returning();
+
+    reply.code(201);
+    return serializeGlobalUpdate(row!);
+  });
+
+  // List account-level updates, oldest first.
+  app.get('/global-updates', async (): Promise<GlobalUpdate[]> => {
+    const rows = await app.db.select().from(globalUpdates).orderBy(asc(globalUpdates.recordedAt));
+    return rows.map(serializeGlobalUpdate);
+  });
+
   // List videos, newest first.
   app.get('/videos', async (): Promise<Video[]> => {
     const rows = await app.db.select().from(videos).orderBy(desc(videos.createdAt));
