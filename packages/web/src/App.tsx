@@ -1,6 +1,7 @@
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { InputPage } from './pages/InputPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { VideosPage } from './pages/VideosPage';
 
 function NavItem({ to, label, icon }: { to: string; label: string; icon: string }) {
@@ -36,6 +37,7 @@ export function App() {
               <NavItem to="/" label="Input" icon="✍️" />
               <NavItem to="/videos" label="Videos" icon="🎬" />
               <NavItem to="/reports" label="Reports" icon="📈" />
+              <NavItem to="/settings" label="Settings" icon="⚙️" />
             </nav>
           </aside>
 
@@ -44,6 +46,7 @@ export function App() {
               <Route path="/" element={<InputPage />} />
               <Route path="/videos" element={<VideosPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>

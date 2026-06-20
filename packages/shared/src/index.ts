@@ -77,3 +77,19 @@ export interface NewGlobalUpdateInput {
 export interface VideoWithUpdates extends Video {
   updates: Update[];
 }
+
+export interface DbExportPayload {
+  version: 1;
+  exportedAt: string;
+  videos: Video[];
+  updates: Update[];
+  globalUpdates: GlobalUpdate[];
+}
+
+export interface DbImportResult {
+  imported: {
+    videos: number;
+    updates: number;
+    globalUpdates: number;
+  };
+}

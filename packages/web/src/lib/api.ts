@@ -1,4 +1,5 @@
 import type {
+  DbImportResult,
   GlobalUpdate,
   NewGlobalUpdateInput,
   NewUpdateInput,
@@ -12,7 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
   });
   if (!res.ok) {
@@ -26,7 +27,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (contentType.includes('application/json')) return (await res.json()) as T;
+  return (await res.text()) as T;
 }
 
 export const api = {
@@ -38,6 +41,9 @@ export const api = {
   createVideo: (input: NewVideoInput) =>
     request<Video>('/videos', { method: 'POST', body: JSON.stringify(input) }),
   deleteVideo: (id: number) => request<void>(`/videos/${id}`, { method: 'DELETE' }),
+  exportDb: () => request<string>('/db/export'),
+  importDb: (sql: string) =>
+    request<DbImportResult>('/db/import', { method: 'POST', body: JSON.stringify({ sql }) }),
   addUpdate: (videoId: number, input: NewUpdateInput) =>
     request<Update>(`/videos/${videoId}/updates`, {
       method: 'POST',

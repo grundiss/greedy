@@ -18,7 +18,7 @@ import type {
   Video as VideoRow,
 } from '../db/schema.js';
 
-function serializeVideo(row: VideoRow): Video {
+export function serializeVideo(row: VideoRow): Video {
   return {
     id: row.id,
     title: row.title,
@@ -34,7 +34,7 @@ function serializeVideo(row: VideoRow): Video {
   };
 }
 
-function serializeUpdate(row: UpdateRow): Update {
+export function serializeUpdate(row: UpdateRow): Update {
   return {
     id: row.id,
     videoId: row.videoId,
@@ -46,7 +46,7 @@ function serializeUpdate(row: UpdateRow): Update {
   };
 }
 
-function serializeGlobalUpdate(row: GlobalUpdateRow): GlobalUpdate {
+export function serializeGlobalUpdate(row: GlobalUpdateRow): GlobalUpdate {
   return {
     id: row.id,
     recordedAt: row.recordedAt.toISOString(),
