@@ -173,6 +173,11 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
   const [description, setDescription] = useState('');
   const [duration, setDuration] = useState('');
   const [tags, setTags] = useState('');
+  const [publishedAt, setPublishedAt] = useState('');
+  const [hasFace, setHasFace] = useState('');
+  const [hookType, setHookType] = useState('');
+  const [soundType, setSoundType] = useState('');
+  const [subtitles, setSubtitles] = useState('');
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -193,12 +198,22 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
           .split(/[,\n]/)
           .map((t) => t.trim())
           .filter(Boolean),
+        publishedAt: publishedAt ? new Date(publishedAt).toISOString() : null,
+        hasFace: hasFace === '' ? null : hasFace === 'yes',
+        hookType: hookType === '' ? null : (hookType as 'none' | 'question' | 'result'),
+        soundType: soundType === '' ? null : (soundType as 'music' | 'voice'),
+        subtitles: subtitles === '' ? null : subtitles === 'yes',
       });
       setMsg({ kind: 'ok', text: 'Video added ✓' });
       setTitle('');
       setDescription('');
       setDuration('');
       setTags('');
+      setPublishedAt('');
+      setHasFace('');
+      setHookType('');
+      setSoundType('');
+      setSubtitles('');
       onCreated();
     } catch (err) {
       setMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Failed' });
@@ -239,6 +254,42 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
             onChange={(e) => setTags(e.target.value)}
             placeholder="dance, comedy"
           />
+        </Field>
+        <Field label="Published at" hint="When it went live">
+          <TextInput
+            type="datetime-local"
+            value={publishedAt}
+            onChange={(e) => setPublishedAt(e.target.value)}
+          />
+        </Field>
+        <Field label="Has face">
+          <Select value={hasFace} onChange={(e) => setHasFace(e.target.value)}>
+            <option value="">—</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </Select>
+        </Field>
+        <Field label="Hook type">
+          <Select value={hookType} onChange={(e) => setHookType(e.target.value)}>
+            <option value="">—</option>
+            <option value="none">None</option>
+            <option value="question">Question</option>
+            <option value="result">Result</option>
+          </Select>
+        </Field>
+        <Field label="Sound type">
+          <Select value={soundType} onChange={(e) => setSoundType(e.target.value)}>
+            <option value="">—</option>
+            <option value="music">Mostly music</option>
+            <option value="voice">Mostly voice</option>
+          </Select>
+        </Field>
+        <Field label="Subtitles">
+          <Select value={subtitles} onChange={(e) => setSubtitles(e.target.value)}>
+            <option value="">—</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </Select>
         </Field>
         {msg ? <Banner kind={msg.kind} text={msg.text} /> : null}
         <Button type="submit" disabled={busy}>

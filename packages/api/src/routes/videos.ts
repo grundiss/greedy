@@ -1,6 +1,8 @@
 import type {
+  HookType,
   NewUpdateInput,
   NewVideoInput,
+  SoundType,
   Update,
   Video,
   VideoWithUpdates,
@@ -18,6 +20,11 @@ function serializeVideo(row: VideoRow): Video {
     description: row.description,
     durationSeconds: row.durationSeconds,
     tags: row.tags,
+    publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
+    hasFace: row.hasFace,
+    hookType: (row.hookType as Video['hookType']) ?? null,
+    soundType: (row.soundType as Video['soundType']) ?? null,
+    subtitles: row.subtitles,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -45,6 +52,32 @@ function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+// Coerce an incoming value to a boolean, or null if absent.
+function toBoolOrNull(value: unknown): boolean | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === 'yes' || value === 1 || value === '1') return true;
+  if (value === 'false' || value === 'no' || value === 0 || value === '0') return false;
+  return null;
+}
+
+// Constrain a string to one of the allowed values, else null.
+function toEnumOrNull<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : null;
+}
+
+const HOOK_TYPES: readonly HookType[] = ['none', 'question', 'result'];
+const SOUND_TYPES: readonly SoundType[] = ['music', 'voice'];
+
+// Parse a date-ish input to a Date, or null if absent/invalid.
+function toDateOrNull(value: unknown): Date | null {
+  if (value === undefined || value === null || value === '') return null;
+  const d = new Date(value as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export async function videoRoutes(app: FastifyInstance): Promise<void> {
   // List videos, newest first.
   app.get('/videos', async (): Promise<Video[]> => {
@@ -68,6 +101,11 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
         description: body.description?.trim() || null,
         durationSeconds: toIntOrNull(body.durationSeconds),
         tags: Array.isArray(body.tags) ? body.tags.map((t) => t.trim()).filter(Boolean) : [],
+        publishedAt: toDateOrNull(body.publishedAt),
+        hasFace: toBoolOrNull(body.hasFace),
+        hookType: toEnumOrNull(body.hookType, HOOK_TYPES),
+        soundType: toEnumOrNull(body.soundType, SOUND_TYPES),
+        subtitles: toBoolOrNull(body.subtitles),
       })
       .returning();
 

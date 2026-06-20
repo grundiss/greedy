@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
 
 // A TikTok video we want to track over time.
 export const videos = pgTable('videos', {
@@ -11,6 +11,12 @@ export const videos = pgTable('videos', {
     .array()
     .notNull()
     .default(sql`'{}'`),
+  // Editorial attributes of the video itself.
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+  hasFace: boolean('has_face'),
+  hookType: text('hook_type'), // 'none' | 'question' | 'result'
+  soundType: text('sound_type'), // 'music' | 'voice'
+  subtitles: boolean('subtitles'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -45,6 +45,19 @@ services:
       timeout: 2s
       retries: 30
 
+  migrate:
+    <<: *app
+    container_name: greedy-migrate
+    command: yarn workspace @greedy/api db:migrate
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgres://greedy:greedy@postgres:5432/greedy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      shared:
+        condition: service_healthy
+
   api:
     <<: *app
     container_name: greedy-api
@@ -62,6 +75,8 @@ services:
         condition: service_healthy
       shared:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   web:
     <<: *app
