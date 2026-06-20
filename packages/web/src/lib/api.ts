@@ -1,4 +1,6 @@
 import type {
+  GlobalUpdate,
+  NewGlobalUpdateInput,
   NewUpdateInput,
   NewVideoInput,
   Update,
@@ -28,6 +30,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  listGlobalUpdates: () => request<GlobalUpdate[]>('/global-updates'),
+  addGlobalUpdate: (input: NewGlobalUpdateInput) =>
+    request<GlobalUpdate>('/global-updates', { method: 'POST', body: JSON.stringify(input) }),
   listVideos: () => request<Video[]>('/videos'),
   getVideo: (id: number) => request<VideoWithUpdates>(`/videos/${id}`),
   createVideo: (input: NewVideoInput) =>

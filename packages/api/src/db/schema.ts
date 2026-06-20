@@ -38,3 +38,14 @@ export type Video = typeof videos.$inferSelect;
 export type NewVideo = typeof videos.$inferInsert;
 export type Update = typeof updates.$inferSelect;
 export type NewUpdate = typeof updates.$inferInsert;
+
+// A timestamped snapshot of account-level metrics that are not tied to one video.
+export const globalUpdates = pgTable('global_updates', {
+  id: serial('id').primaryKey(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  followers: integer('followers').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type GlobalUpdate = typeof globalUpdates.$inferSelect;
+export type NewGlobalUpdate = typeof globalUpdates.$inferInsert;
