@@ -31,10 +31,21 @@ export function InputPage() {
   }, [refreshVideos]);
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <LogGlobalUpdateForm />
-      <LogUpdateForm videos={videos} />
-      <AddVideoForm onCreated={refreshVideos} />
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Data input</h2>
+        <p className="mt-1 text-slate-500">
+          Log fresh metrics and add videos without leaving your desk workflow.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(360px,420px)] items-start gap-6">
+        <div className="space-y-6">
+          <LogGlobalUpdateForm />
+          <LogUpdateForm videos={videos} />
+        </div>
+        <AddVideoForm onCreated={refreshVideos} />
+      </div>
     </div>
   );
 }
@@ -74,7 +85,7 @@ function LogGlobalUpdateForm() {
 
   return (
     <Card title="Log a global update">
-      <form onSubmit={submit} className="flex flex-col gap-4">
+      <form onSubmit={submit} className="grid gap-4">
         <p className="text-xs text-slate-400">
           Track account-level numbers that are not tied to a single video.
         </p>
@@ -108,8 +119,12 @@ function LogGlobalUpdateForm() {
           </Field>
         ) : null}
 
-        {msg ? <Banner kind={msg.kind} text={msg.text} /> : null}
-        <Button type="submit" disabled={busy}>
+        {msg ? (
+          <div className="col-span-2">
+            <Banner kind={msg.kind} text={msg.text} />
+          </div>
+        ) : null}
+        <Button type="submit" disabled={busy} className="col-span-2">
           {busy ? 'Saving…' : 'Save global update'}
         </Button>
       </form>
@@ -171,7 +186,7 @@ function LogUpdateForm({ videos }: { videos: Video[] }) {
 
   return (
     <Card title="Log an update">
-      <form onSubmit={submit} className="flex flex-col gap-4">
+      <form onSubmit={submit} className="grid gap-4">
         <Field label="Video">
           <Select value={videoId} onChange={(e) => setVideoId(e.target.value)}>
             {videos.length === 0 ? <option value="">No videos yet — add one below</option> : null}
@@ -301,21 +316,25 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <Card title="Add a video">
-      <form onSubmit={submit} className="flex flex-col gap-4">
-        <Field label="Title">
-          <TextInput
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="My new video"
-          />
-        </Field>
-        <Field label="Short description">
-          <TextInput
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="What it's about"
-          />
-        </Field>
+      <form onSubmit={submit} className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <Field label="Title">
+            <TextInput
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="My new video"
+            />
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="Short description">
+            <TextInput
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What it's about"
+            />
+          </Field>
+        </div>
         <Field label="Duration (seconds)">
           <TextInput
             inputMode="numeric"
@@ -325,20 +344,24 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
             placeholder="e.g. 45"
           />
         </Field>
-        <Field label="Tags" hint="Comma-separated">
-          <TextInput
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            placeholder="dance, comedy"
-          />
-        </Field>
-        <Field label="Published at" hint="When it went live">
-          <TextInput
-            type="datetime-local"
-            value={publishedAt}
-            onChange={(e) => setPublishedAt(e.target.value)}
-          />
-        </Field>
+        <div className="col-span-2">
+          <Field label="Tags" hint="Comma-separated">
+            <TextInput
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="dance, comedy"
+            />
+          </Field>
+        </div>
+        <div className="col-span-2">
+          <Field label="Published at" hint="When it went live">
+            <TextInput
+              type="datetime-local"
+              value={publishedAt}
+              onChange={(e) => setPublishedAt(e.target.value)}
+            />
+          </Field>
+        </div>
         <Field label="Has face">
           <Select value={hasFace} onChange={(e) => setHasFace(e.target.value)}>
             <option value="">—</option>
@@ -368,8 +391,12 @@ function AddVideoForm({ onCreated }: { onCreated: () => void }) {
             <option value="no">No</option>
           </Select>
         </Field>
-        {msg ? <Banner kind={msg.kind} text={msg.text} /> : null}
-        <Button type="submit" disabled={busy}>
+        {msg ? (
+          <div className="col-span-2">
+            <Banner kind={msg.kind} text={msg.text} />
+          </div>
+        ) : null}
+        <Button type="submit" disabled={busy} className="col-span-2">
           {busy ? 'Saving…' : 'Add video'}
         </Button>
       </form>
