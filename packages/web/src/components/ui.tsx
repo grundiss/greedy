@@ -5,7 +5,7 @@ import type {
   SelectHTMLAttributes,
 } from 'react';
 
-// Large, thumb-friendly form primitives for mobile data entry.
+// Desktop-friendly form primitives shared across data-entry and reporting screens.
 
 export function Field({
   label,
@@ -26,7 +26,7 @@ export function Field({
 }
 
 const baseInput =
-  'w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200';
 
 export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${baseInput} ${props.className ?? ''}`} />;
@@ -51,7 +51,7 @@ export function Button({
   return (
     <button
       {...props}
-      className={`w-full rounded-xl px-4 py-3 text-base font-semibold transition-colors disabled:cursor-not-allowed ${styles} ${props.className ?? ''}`}
+      className={`w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed ${styles} ${props.className ?? ''}`}
     >
       {children}
     </button>
@@ -60,7 +60,7 @@ export function Button({
 
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       {title ? <h2 className="mb-3 text-lg font-semibold">{title}</h2> : null}
       {children}
     </section>

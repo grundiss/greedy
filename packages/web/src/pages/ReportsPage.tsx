@@ -65,31 +65,38 @@ export function ReportsPage() {
   }, [videoId]);
 
   return (
-    <div className="flex flex-col gap-6 py-2">
-      <Card>
-        <Field label="Video">
-          <Select value={videoId} onChange={(e) => setVideoId(e.target.value)}>
-            {videos.length === 0 ? <option value="">No videos yet</option> : null}
-            {videos.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.title}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </Card>
+    <div className="space-y-6">
+      <div className="flex items-end justify-between gap-6">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Reports</h2>
+          <p className="mt-1 text-slate-500">
+            Compare account growth and per-video performance over time.
+          </p>
+        </div>
+
+        <div className="w-96">
+          <Field label="Video">
+            <Select value={videoId} onChange={(e) => setVideoId(e.target.value)}>
+              {videos.length === 0 ? <option value="">No videos yet</option> : null}
+              {videos.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.title}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      <GlobalUpdateChart updates={globalUpdates} />
+      <div className="grid grid-cols-2 gap-6">
+        <GlobalUpdateChart updates={globalUpdates} />
 
-      {data ? (
-        <>
-          {METRICS.map((m) => (
-            <MetricChart key={m.key} metric={m} updates={data.updates} />
-          ))}
-        </>
-      ) : null}
+        {data
+          ? METRICS.map((m) => <MetricChart key={m.key} metric={m} updates={data.updates} />)
+          : null}
+      </div>
     </div>
   );
 }

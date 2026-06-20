@@ -10,10 +10,10 @@ audience engagement over time. There is exactly one user (the owner), so there
 is **no auth, no multi-tenancy, and no security layer** — do not add them unless
 asked.
 
-The app has two modes:
+The app has three primary desktop workflows:
 
-- **Data input** (mobile-first): add videos, and log timestamped _updates_ of
-  engagement metrics.
+- **Data input**: add videos, and log timestamped _updates_ of engagement metrics.
+- **Videos**: browse the saved video catalog in a scannable desktop list/table.
 - **Reports**: pick a video and view its metrics as time series.
 
 ## Stack & layout
@@ -75,8 +75,9 @@ Two tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
   [`src/index.ts`](packages/api/src/index.ts) via `app.register(videoRoutes)`.
 - Shared DTOs: [`packages/shared/src/index.ts`](packages/shared/src/index.ts)
   — the contract between api and web. **Dates cross the wire as ISO strings.**
-- Web: [`src/App.tsx`](packages/web/src/App.tsx) (router + bottom tab nav),
+- Web: [`src/App.tsx`](packages/web/src/App.tsx) (router + desktop sidebar nav),
   [`src/pages/InputPage.tsx`](packages/web/src/pages/InputPage.tsx),
+  [`src/pages/VideosPage.tsx`](packages/web/src/pages/VideosPage.tsx),
   [`src/pages/ReportsPage.tsx`](packages/web/src/pages/ReportsPage.tsx),
   shared UI primitives in [`src/components/ui.tsx`](packages/web/src/components/ui.tsx),
   and the typed fetch client in [`src/lib/api.ts`](packages/web/src/lib/api.ts).
@@ -102,8 +103,11 @@ Base URL `http://localhost:3000`. JSON in/out. Errors are
   to the shared serializable DTOs by the `serialize*` functions.
 - ESM throughout; intra-package imports use explicit `.js` extensions
   (`./routes/videos.js`) per the TS/ESM setup.
-- Mobile-first UI: large tap targets, `inputMode="numeric"` for number fields,
-  the Log Update form keeps the selected video after submit for fast repeat entry.
+- Desktop-first UI: prefer spacious multi-column layouts, sidebar navigation,
+  scannable tables/lists, and efficient pointer/keyboard workflows over
+  mobile-first constraints. Keep `inputMode="numeric"` for number fields where it
+  improves validation, and keep the Log Update form selected video after submit
+  for fast repeat entry.
 - Formatting is Prettier (Husky pre-commit runs lint-staged). Run
   `yarn format` / `yarn typecheck` before finishing.
 
@@ -149,5 +153,6 @@ curl -s -X POST localhost:3000/videos/$ID/updates -H 'Content-Type: application/
 curl -s localhost:3000/videos/$ID/updates   # two rows; non-supplied metrics are null
 ```
 
-For UI changes, load http://localhost:5173, exercise both tabs, and check a
-narrow (mobile) viewport for tap-target size and no horizontal scroll.
+For UI changes, load http://localhost:5173 and exercise the desktop workflows
+(Input, Videos, Reports) at a typical desktop viewport. Check that tables, forms,
+and charts make good use of horizontal space without awkward wrapping.
