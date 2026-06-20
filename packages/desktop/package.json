@@ -1,0 +1,28 @@
+{
+  "name": "@greedy/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Greedy desktop app (Electron)",
+  "author": "OneDay",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dist": "electron-builder",
+    "dist:publish": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.3",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@greedy/api": "1.0.0",
+    "@greedy/shared": "1.0.0",
+    "@types/node": "^22.10.7",
+    "electron": "42.4.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1"
+  }
+}

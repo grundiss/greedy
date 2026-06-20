@@ -25,3 +25,6 @@ packages/api/drizzle/meta/_journal.json.bak
 # vite
 packages/web/dist/
 .vite/
+
+# electron-builder output
+packages/desktop/release/
