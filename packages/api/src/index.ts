@@ -2,6 +2,7 @@ import cors from '@fastify/cors';
 import type { HealthResponse } from '@greedy/shared';
 import Fastify from 'fastify';
 import { config } from './config.js';
+import { videoRoutes } from './routes/videos.js';
 
 const app = Fastify({
   logger: {
@@ -17,6 +18,8 @@ await app.register(cors, { origin: true });
 app.get('/health', async (): Promise<HealthResponse> => {
   return { status: 'ok', timestamp: new Date().toISOString() };
 });
+
+await app.register(videoRoutes);
 
 try {
   await app.listen({ port: config.port, host: config.host });

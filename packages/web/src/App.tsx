@@ -1,32 +1,45 @@
-import type { HealthResponse } from '@greedy/shared';
-import { useEffect, useState } from 'react';
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { InputPage } from './pages/InputPage';
+import { ReportsPage } from './pages/ReportsPage';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+function TabLink({ to, label, icon }: { to: string; label: string; icon: string }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs font-medium transition-colors ${
+          isActive ? 'text-indigo-600' : 'text-slate-400'
+        }`
+      }
+    >
+      <span className="text-2xl leading-none">{icon}</span>
+      {label}
+    </NavLink>
+  );
+}
 
 export function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch(`${API_URL}/health`)
-      .then((res) => res.json() as Promise<HealthResponse>)
-      .then(setHealth)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Request failed'));
-  }, []);
-
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 text-slate-900">
-      <h1 className="text-4xl font-bold tracking-tight">Greedy</h1>
-      <p className="text-slate-500">React + Vite + Tailwind + Fastify + Drizzle</p>
-      <div className="rounded-lg border border-slate-200 bg-white px-6 py-4 shadow-sm">
-        {health ? (
-          <span className="text-green-600">API: {health.status}</span>
-        ) : error ? (
-          <span className="text-red-600">API error: {error}</span>
-        ) : (
-          <span className="text-slate-400">Checking API…</span>
-        )}
+    <BrowserRouter>
+      <div className="mx-auto flex min-h-screen max-w-2xl flex-col bg-slate-50 text-slate-900">
+        <header className="px-4 pt-6 pb-2">
+          <h1 className="text-2xl font-bold tracking-tight">Greedy</h1>
+          <p className="text-sm text-slate-500">Track your TikTok content & audience</p>
+        </header>
+
+        <main className="flex-1 px-4 pb-24">
+          <Routes>
+            <Route path="/" element={<InputPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+
+        <nav className="fixed inset-x-0 bottom-0 mx-auto flex max-w-2xl border-t border-slate-200 bg-white/95 backdrop-blur">
+          <TabLink to="/" label="Input" icon="✍️" />
+          <TabLink to="/reports" label="Reports" icon="📈" />
+        </nav>
       </div>
-    </div>
+    </BrowserRouter>
   );
 }
