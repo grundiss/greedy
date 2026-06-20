@@ -15,6 +15,8 @@ The app has three primary desktop workflows:
 - **Data input**: add videos, and log timestamped _updates_ of engagement metrics.
 - **Videos**: browse the saved video catalog in a scannable desktop list/table.
 - **Reports**: pick a video and view its metrics as time series.
+- **Settings**: export the full database as a Greedy SQL dump, or import one to
+  replace the local data.
 
 ## Stack & layout
 
@@ -80,7 +82,9 @@ Two tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
   [`src/pages/VideosPage.tsx`](packages/web/src/pages/VideosPage.tsx),
   [`src/pages/ReportsPage.tsx`](packages/web/src/pages/ReportsPage.tsx),
   shared UI primitives in [`src/components/ui.tsx`](packages/web/src/components/ui.tsx),
-  and the typed fetch client in [`src/lib/api.ts`](packages/web/src/lib/api.ts).
+  the typed fetch client in [`src/lib/api.ts`](packages/web/src/lib/api.ts),
+  and database backup/restore UI in
+  [`src/pages/SettingsPage.tsx`](packages/web/src/pages/SettingsPage.tsx).
 
 ## HTTP API
 
@@ -95,6 +99,8 @@ Base URL `http://localhost:3000`. JSON in/out. Errors are
 | DELETE | `/videos/:id`         | Cascades to its updates.                                          |
 | POST   | `/videos/:id/updates` | Partial update. **Requires ≥1 metric**; `depthPct` clamped 0–100. |
 | GET    | `/videos/:id/updates` | Updates oldest-first.                                             |
+| GET    | `/db/export`          | Downloads a Greedy SQL dump of all app data.                      |
+| POST   | `/db/import`          | Imports a Greedy SQL dump and replaces current app data.          |
 
 ## Conventions
 

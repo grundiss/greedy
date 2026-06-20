@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@greedy/shared';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type { AppDb } from './db/index.js';
+import { dbDumpRoutes } from './routes/dbDump.js';
 import { videoRoutes } from './routes/videos.js';
 
 // Make the injected database available to every route as `app.db` /
@@ -43,6 +44,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
 
   // API routes are registered before static so they always win over the SPA.
   await app.register(videoRoutes);
+  await app.register(dbDumpRoutes);
 
   if (opts.serveWebRoot) {
     // `wildcard: false` avoids a greedy `/*` route; SPA deep links are handled
