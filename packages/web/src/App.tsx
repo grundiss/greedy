@@ -38,7 +38,7 @@ export function App() {
               <NavItem to="/" label="Input" icon="✍️" />
               <NavItem to="/videos" label="Videos" icon="🎬" />
               <NavItem to="/reports" label="Reports" icon="📈" />
-              <NavItem to="/settings" label="Settings" icon="⚙️" />
+              <NavItem to="/settings" label="Settings" icon="👷‍♀️" />
             </nav>
           </aside>
 
