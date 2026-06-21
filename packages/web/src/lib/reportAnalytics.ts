@@ -296,3 +296,232 @@ export function aggregateByCreativeAttribute(
     .map(([k, groupRows]) => aggregateRows(k, k, groupRows))
     .sort((a, b) => b.videosCount - a.videosCount);
 }
+
+// ---------------------------------------------------------------------------
+// Next actions
+// ---------------------------------------------------------------------------
+
+export type ActionKind = 'double-down' | 'promote' | 'cut' | 'experiment' | 'data-quality' | 'risk';
+
+export interface NextAction {
+  id: string;
+  kind: ActionKind;
+  title: string;
+  body: string;
+  priority: 'high' | 'medium' | 'low';
+  relatedVideoId?: number;
+  relatedVideoTitle?: string;
+}
+
+const ACTION_ORDER: ActionKind[] = [
+  'data-quality',
+  'double-down',
+  'promote',
+  'cut',
+  'risk',
+  'experiment',
+];
+
+export function buildNextActions(rows: VideoReportRow[]): NextAction[] {
+  const actions: NextAction[] = [];
+
+  // A. Data quality
+  const withViewsAndFollowers = rows.filter(
+    (r) => r.dataQuality.hasViews && r.dataQuality.hasFollowers,
+  ).length;
+  const total = rows.length;
+  const pctNoUpdates = total > 0 ? rows.filter((r) => !r.dataQuality.hasUpdates).length / total : 0;
+  const pctNoDuration =
+    total > 0 ? rows.filter((r) => !r.dataQuality.hasDuration).length / total : 0;
+  const pctNoTags = total > 0 ? rows.filter((r) => !r.dataQuality.hasTags).length / total : 0;
+
+  const dataMissing: string[] = [];
+  if (withViewsAndFollowers < 3) dataMissing.push('views and new followers');
+  if (pctNoUpdates > 0.3) dataMissing.push('updates');
+  if (pctNoDuration > 0.3) dataMissing.push('duration');
+  if (pctNoTags > 0.3) dataMissing.push('tags');
+
+  if (dataMissing.length > 0) {
+    actions.push({
+      id: 'data-quality',
+      kind: 'data-quality',
+      title: 'Improve your data first',
+      body: `Recommendations are limited because some videos are missing: ${dataMissing.join(', ')}. Add updates and fill in video details to unlock better insights.`,
+      priority: withViewsAndFollowers < 3 ? 'high' : 'medium',
+    });
+  }
+
+  // Shared medians
+  const allF1k = rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null);
+  const medianF1k = median(allF1k);
+
+  // B. Double down
+  const candidatesForBest = rows.filter(
+    (r) => r.followersPer1kViews !== null && (r.latest.views ?? 0) > 0,
+  );
+  const highViewCandidates = candidatesForBest.filter((r) => (r.latest.views ?? 0) >= 100);
+  const bestPool = highViewCandidates.length > 0 ? highViewCandidates : candidatesForBest;
+  const bestRow =
+    bestPool.length > 0
+      ? bestPool.reduce((best, r) =>
+          (r.followersPer1kViews ?? 0) > (best.followersPer1kViews ?? 0) ? r : best,
+        )
+      : null;
+
+  if (bestRow && medianF1k !== null && (bestRow.followersPer1kViews ?? 0) >= medianF1k * 1.5) {
+    const v = bestRow.video;
+    const f1k = bestRow.followersPer1kViews!.toFixed(1);
+    const dur = bestRow.durationBucket !== 'unknown' ? bestRow.durationBucket : 'unknown duration';
+    const hook = v.hookType ?? 'no hook data';
+    const sound = v.soundType ?? 'no sound data';
+    const subs =
+      v.subtitles === null ? 'subtitles unknown' : v.subtitles ? 'with subtitles' : 'no subtitles';
+    const tags = v.tags.length > 0 ? v.tags.slice(0, 3).join(', ') : 'no tags';
+    actions.push({
+      id: 'double-down',
+      kind: 'double-down',
+      title: 'Repeat your best growth format',
+      body: `Your best growth video is "${v.title}": ${f1k} followers per 1k views. Repeat its pattern: ${dur}, hook "${hook}", sound "${sound}", ${subs}, tags: ${tags}.`,
+      priority: 'high',
+      relatedVideoId: v.id,
+      relatedVideoTitle: v.title,
+    });
+  }
+
+  // C. Promote
+  const promoteCandidates = rows.filter((r) => {
+    if (r.promoted) return false;
+    if (r.followersPer1kViews === null) return false;
+    if (medianF1k !== null && r.followersPer1kViews < medianF1k * 1.25) return false;
+    if (r.latest.depthPct !== null && r.latest.depthPct < 35) return false;
+    return true;
+  });
+  const highViewPromote = promoteCandidates.filter((r) => (r.latest.views ?? 0) >= 100);
+  const promotePool = highViewPromote.length > 0 ? highViewPromote : promoteCandidates;
+  const promoteRow =
+    promotePool.length > 0
+      ? promotePool.reduce((best, r) =>
+          (r.followersPer1kViews ?? 0) > (best.followersPer1kViews ?? 0) ? r : best,
+        )
+      : null;
+
+  if (
+    promoteRow &&
+    promoteRow.video.id !== bestRow?.video.id &&
+    promoteRow.followersPer1kViews !== null
+  ) {
+    actions.push({
+      id: 'promote',
+      kind: 'promote',
+      title: 'Consider promoting this video',
+      body: `"${promoteRow.video.title}" already converts organically: ${promoteRow.followersPer1kViews.toFixed(1)} followers per 1k views. Promote winners, not weak videos.`,
+      priority: 'medium',
+      relatedVideoId: promoteRow.video.id,
+      relatedVideoTitle: promoteRow.video.title,
+    });
+  }
+
+  // D. Cut
+  const promotedWithCost = rows.filter((r) => r.costPerPromotionFollower !== null);
+  const allCosts = promotedWithCost
+    .map((r) => r.costPerPromotionFollower)
+    .filter((v): v is number => v !== null);
+  const medianCost = median(allCosts);
+  if (medianCost !== null) {
+    const cutRow =
+      promotedWithCost
+        .filter((r) => (r.costPerPromotionFollower ?? 0) > medianCost * 1.5)
+        .sort((a, b) => (b.costPerPromotionFollower ?? 0) - (a.costPerPromotionFollower ?? 0))[0] ??
+      null;
+    if (cutRow && cutRow.costPerPromotionFollower !== null) {
+      actions.push({
+        id: 'cut',
+        kind: 'cut',
+        title: 'Stop scaling expensive promotions',
+        body: `"${cutRow.video.title}" costs ${cutRow.costPerPromotionFollower.toFixed(2)} per follower, which is much higher than your median promoted video. Do not scale this format until organic conversion improves.`,
+        priority: 'high',
+        relatedVideoId: cutRow.video.id,
+        relatedVideoTitle: cutRow.video.title,
+      });
+    }
+  }
+
+  // E. Risk
+  const hateRows = rows.filter((r) => r.latest.hate === true);
+  if (hateRows.length > 0 && medianF1k !== null) {
+    const highViewsThreshold = median(
+      rows.map((r) => r.latest.views).filter((v): v is number => v !== null),
+    );
+    const riskRow =
+      hateRows.find(
+        (r) =>
+          (highViewsThreshold !== null && (r.latest.views ?? 0) > highViewsThreshold) ||
+          (r.followersPer1kViews !== null && r.followersPer1kViews > medianF1k),
+      ) ?? null;
+    if (riskRow) {
+      actions.push({
+        id: 'risk',
+        kind: 'risk',
+        title: 'Watch quality of growth',
+        body: `"${riskRow.video.title}" performs well, but has hate in comments. Treat it as risky growth: review comments before repeating or promoting.`,
+        priority: 'medium',
+        relatedVideoId: riskRow.video.id,
+        relatedVideoTitle: riskRow.video.title,
+      });
+    }
+  }
+
+  // F. Experiment
+  if (rows.length >= 3 && medianF1k !== null) {
+    const tagAggs = aggregateByTag(rows);
+    const tagHit = tagAggs.find(
+      (agg) =>
+        (agg.confidence === 'low' || agg.confidence === 'medium') &&
+        agg.medianFollowersPer1kViews !== null &&
+        agg.medianFollowersPer1kViews > medianF1k,
+    );
+    if (tagHit) {
+      actions.push({
+        id: `experiment-tag-${tagHit.key}`,
+        kind: 'experiment',
+        title: 'Run a controlled experiment',
+        body: `Try 3 more videos with tag "${tagHit.label}". Early signal is promising (${tagHit.medianFollowersPer1kViews?.toFixed(1)} followers/1k views), but confidence is still ${tagHit.confidence}.`,
+        priority: tagHit.confidence === 'medium' ? 'medium' : 'low',
+      });
+    } else {
+      const creativeAttrs: Array<{
+        attribute: 'hookType' | 'soundType' | 'subtitles';
+        label: string;
+      }> = [
+        { attribute: 'hookType', label: 'hook' },
+        { attribute: 'soundType', label: 'sound' },
+        { attribute: 'subtitles', label: 'subtitles' },
+      ];
+      for (const { attribute, label } of creativeAttrs) {
+        const aggs = aggregateByCreativeAttribute(rows, attribute);
+        const hit = aggs.find(
+          (agg) =>
+            agg.key !== 'unknown' &&
+            (agg.confidence === 'low' || agg.confidence === 'medium') &&
+            agg.medianFollowersPer1kViews !== null &&
+            agg.medianFollowersPer1kViews > medianF1k,
+        );
+        if (hit) {
+          actions.push({
+            id: `experiment-${attribute}-${hit.key}`,
+            kind: 'experiment',
+            title: 'Run a controlled experiment',
+            body: `Try 3 more videos with ${label} "${hit.label}". Early signal is promising (${hit.medianFollowersPer1kViews?.toFixed(1)} followers/1k views), but confidence is still ${hit.confidence}.`,
+            priority: hit.confidence === 'medium' ? 'medium' : 'low',
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  // Sort by kind order, cap at 5
+  return actions
+    .sort((a, b) => ACTION_ORDER.indexOf(a.kind) - ACTION_ORDER.indexOf(b.kind))
+    .slice(0, 5);
+}
