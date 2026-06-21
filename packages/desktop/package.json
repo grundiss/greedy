@@ -25,8 +25,8 @@
     "tar": "^7.5.16"
   },
   "devDependencies": {
-    "@greedy/api": "1.0.0",
-    "@greedy/shared": "1.0.0",
+    "@greedy/api": "*",
+    "@greedy/shared": "*",
     "@types/node": "^22.10.7",
     "electron": "42.4.1",
     "electron-builder": "^26.15.3",
