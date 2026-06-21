@@ -1,5 +1,6 @@
 import type { GlobalUpdate, Update, Video, VideoWithUpdates } from '@greedy/shared';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   CartesianGrid,
   Line,
@@ -30,16 +31,35 @@ function formatTime(iso: string): string {
 }
 
 export function ReportsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedVideoId = searchParams.get('videoId') ?? '';
   const [videos, setVideos] = useState<Video[]>([]);
-  const [videoId, setVideoId] = useState<string>('');
   const [data, setData] = useState<VideoWithUpdates | null>(null);
   const [globalUpdates, setGlobalUpdates] = useState<GlobalUpdate[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const videoId = useMemo(() => {
+    if (
+      requestedVideoId &&
+      (videos.length === 0 || videos.some((video) => String(video.id) === requestedVideoId))
+    ) {
+      return requestedVideoId;
+    }
+
+    return videos.length > 0 ? String(videos[0]!.id) : '';
+  }, [requestedVideoId, videos]);
+
+  function selectVideo(nextVideoId: string) {
+    setSearchParams(nextVideoId ? { videoId: nextVideoId } : {});
+  }
+
   useEffect(() => {
     api
       .listGlobalUpdates()
-      .then(setGlobalUpdates)
+      .then((updates) => {
+        setGlobalUpdates(updates);
+        setError(null);
+      })
       .catch((e: unknown) =>
         setError(e instanceof Error ? e.message : 'Failed to load global updates'),
       );
@@ -48,7 +68,7 @@ export function ReportsPage() {
       .listVideos()
       .then((vs) => {
         setVideos(vs);
-        if (vs.length > 0) setVideoId(String(vs[0]!.id));
+        setError(null);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load videos'));
   }, []);
@@ -58,9 +78,14 @@ export function ReportsPage() {
       setData(null);
       return;
     }
+
+    setData(null);
     api
       .getVideo(Number(videoId))
-      .then(setData)
+      .then((nextData) => {
+        setData(nextData);
+        setError(null);
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load video'));
   }, [videoId]);
 
@@ -76,7 +101,7 @@ export function ReportsPage() {
 
         <div className="w-96">
           <Field label="Video">
-            <Select value={videoId} onChange={(e) => setVideoId(e.target.value)}>
+            <Select value={videoId} onChange={(e) => selectVideo(e.target.value)}>
               {videos.length === 0 ? <option value="">No videos yet</option> : null}
               {videos.map((v) => (
                 <option key={v.id} value={v.id}>

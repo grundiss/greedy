@@ -1,5 +1,6 @@
-import type { Video } from '@greedy/shared';
+import type { Video, VideoWithUpdates } from '@greedy/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, TextInput, Button, Modal } from '../components/ui';
 import { VideoForm } from '../components/VideoForm';
 import { api } from '../lib/api';
@@ -10,6 +11,16 @@ function formatDate(iso: string | null): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -25,12 +36,46 @@ function formatDuration(seconds: number | null): string {
   return minutes > 0 ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
 }
 
+function formatMetric(value: number | null, suffix = ''): string {
+  return value === null ? '—' : `${value}${suffix}`;
+}
+
 export function VideosPage() {
+  const navigate = useNavigate();
   const [videos, setVideos] = useState<Video[]>([]);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [eventsVideo, setEventsVideo] = useState<VideoWithUpdates | null>(null);
+  const [eventsVideoTitle, setEventsVideoTitle] = useState('');
+  const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const closeEventsDialog = useCallback(() => {
+    setIsEventsDialogOpen(false);
+    setEventsVideo(null);
+    setEventsVideoTitle('');
+    setEventsError(null);
+    setEventsLoading(false);
+  }, []);
+
+  const openEventsDialog = useCallback(async (video: Video) => {
+    setEventsVideoTitle(video.title);
+    setEventsVideo(null);
+    setEventsError(null);
+    setIsEventsDialogOpen(true);
+    setEventsLoading(true);
+
+    try {
+      setEventsVideo(await api.getVideo(video.id));
+    } catch (e: unknown) {
+      setEventsError(e instanceof Error ? e.message : 'Failed to load updates');
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
 
   const refreshVideos = useCallback(async () => {
     try {
@@ -51,15 +96,19 @@ export function VideosPage() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && isDialogOpen) {
+      if (event.key !== 'Escape') return;
+
+      if (isDialogOpen) {
         setIsDialogOpen(false);
         setEditingVideo(null);
       }
+
+      if (isEventsDialogOpen) closeEventsDialog();
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isDialogOpen]);
+  }, [closeEventsDialog, isDialogOpen, isEventsDialogOpen]);
 
   const filteredVideos = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -120,7 +169,7 @@ export function VideosPage() {
                   <th className="px-4 py-3 font-semibold">Duration</th>
                   <th className="px-4 py-3 font-semibold">Tags</th>
                   <th className="px-4 py-3 font-semibold">Attributes</th>
-                  <th className="w-24 px-4 py-3 font-semibold">Actions</th>
+                  <th className="w-52 px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -164,17 +213,35 @@ export function VideosPage() {
                       <div>Subtitles: {formatBool(video.subtitles)}</div>
                     </td>
                     <td className="px-4 py-4">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="w-auto px-3 py-1.5"
-                        onClick={() => {
-                          setEditingVideo(video);
-                          setIsDialogOpen(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-auto px-3 py-1.5"
+                          onClick={() => {
+                            setEditingVideo(video);
+                            setIsDialogOpen(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-auto px-3 py-1.5"
+                          onClick={() => navigate(`/reports?videoId=${video.id}`)}
+                        >
+                          Report
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-auto px-3 py-1.5"
+                          onClick={() => void openEventsDialog(video)}
+                        >
+                          Events
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -209,6 +276,62 @@ export function VideosPage() {
             setEditingVideo(null);
           }}
         />
+      </Modal>
+
+      <Modal open={isEventsDialogOpen} onClose={closeEventsDialog}>
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Registered updates</h2>
+              <p className="mt-1 text-sm text-slate-500">{eventsVideoTitle}</p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-auto px-3 py-1.5"
+              onClick={closeEventsDialog}
+            >
+              Close
+            </Button>
+          </div>
+
+          {eventsError ? <p className="text-sm text-red-600">{eventsError}</p> : null}
+
+          {eventsLoading ? (
+            <p className="py-8 text-center text-sm text-slate-400">Loading updates…</p>
+          ) : eventsVideo && eventsVideo.updates.length === 0 ? (
+            <p className="py-8 text-center text-sm text-slate-400">
+              No registered updates for this video yet.
+            </p>
+          ) : eventsVideo ? (
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full border-collapse bg-white text-left text-sm">
+                <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Recorded</th>
+                    <th className="px-4 py-3 font-semibold">Likes</th>
+                    <th className="px-4 py-3 font-semibold">Saves</th>
+                    <th className="px-4 py-3 font-semibold">Watch depth</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {eventsVideo.updates.map((update) => (
+                    <tr key={update.id}>
+                      <td className="px-4 py-3 text-slate-700">
+                        {formatDateTime(update.recordedAt)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{formatMetric(update.likes)}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatMetric(update.saves)}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatMetric(update.depthPct, '%')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
       </Modal>
     </div>
   );
