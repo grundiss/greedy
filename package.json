@@ -20,6 +20,7 @@
     "content:pack": "yarn workspace @greedy/desktop pack:content",
     "content:publish": "yarn workspace @greedy/desktop publish:content",
     "content:serve": "yarn workspace @greedy/desktop serve:content",
+    "content:tag": "node scripts/release-content.mjs",
     "content:release": "yarn build && yarn workspace @greedy/desktop build:content && yarn workspace @greedy/desktop pack:content && yarn workspace @greedy/desktop publish:content",
     "gen:keys": "yarn workspace @greedy/desktop gen:keys",
     "db:generate": "yarn workspace @greedy/api db:generate",
