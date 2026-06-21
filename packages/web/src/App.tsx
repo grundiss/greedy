@@ -1,4 +1,5 @@
 import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
+import { UpdateNotice } from './components/UpdateNotice';
 import { InputPage } from './pages/InputPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -51,6 +52,7 @@ export function App() {
             </Routes>
           </main>
         </div>
+        <UpdateNotice />
       </div>
     </BrowserRouter>
   );

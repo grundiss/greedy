@@ -1,143 +1,148 @@
-import { createPgliteDb } from '@greedy/api/db/pglite';
-import { startServer } from '@greedy/api/server';
-import { app, BrowserWindow, dialog, shell } from 'electron';
-import electronUpdater from 'electron-updater';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// Greedy desktop shell — a stable container for signed content bundles.
+//
+// The shell is intentionally thin and static: it boots the active content
+// version, serves its frontend over app://, runs its backend, and manages
+// content updates. It does NOT contain app features — those live in the content
+// bundle (web build + backend code + migrations) and are updated independently
+// via the content updater. See packages/desktop/docs/CONTENT_UPDATES.md.
+import { app, dialog, ipcMain } from 'electron';
+import {
+  CONTENT_UPDATES_ENABLED,
+  ENABLE_SHELL_AUTOUPDATE,
+  INITIAL_CHECK_DELAY_MS,
+} from './shell/config.js';
+import * as store from './shell/content-store.js';
+import { log } from './shell/logger.js';
+import { installAppProtocol, registerAppScheme } from './shell/protocol.js';
+import { Runtime } from './shell/runtime.js';
+import type { UpdateStatus } from './shell/types.js';
+import { Updater } from './shell/updater.js';
+import { createWindow, getWindow, hasWindow, recreateWindow } from './shell/window.js';
 
-// electron-updater is CJS; from an ESM main process use the default import.
-const { autoUpdater } = electronUpdater;
-
-// Without this, userData lands under the scoped package name
-// (~/Library/Application Support/@greedy/desktop). Pin a clean name so the DB
-// and app data live under ~/Library/Application Support/Greedy.
+// userData lands under ~/Library/Application Support/Greedy (not the scoped
+// package name) so the DB + content live in a clean, stable location.
 app.setName('Greedy');
 
-// Note: `__dirname`/`__filename` are provided to bundled CJS deps by the
-// esbuild banner (build.mjs), so we use a distinct name here to avoid a clash.
-const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+// app:// must be registered as a privileged scheme before the app is ready.
+registerAppScheme();
 
-let serverUrl: string | null = null;
-let closeDb: (() => Promise<void>) | null = null;
+const runtime = new Runtime();
+let updater: Updater | null = null;
 let isQuitting = false;
 
-// Where the SPA build and the SQL migrations live. Packaged: shipped via
-// electron-builder `extraResources` → process.resourcesPath. Dev: in the repo.
-function resolveResources(): { webRoot: string; migrationsFolder: string } {
-  if (app.isPackaged) {
-    return {
-      webRoot: path.join(process.resourcesPath, 'web'),
-      migrationsFolder: path.join(process.resourcesPath, 'drizzle'),
-    };
-  }
-  // dev: packages/desktop/dist/main.js → repo root is three levels up.
-  const repoRoot = path.resolve(moduleDir, '..', '..', '..');
+function emit(status: UpdateStatus): void {
+  log.info('status:', status.phase, 'version' in status ? (status.version ?? '') : '');
+  getWindow()?.webContents.send('greedy:update-status', status);
+}
+
+function windowContext(updatedTo?: string) {
   return {
-    webRoot: path.join(repoRoot, 'packages', 'web', 'dist'),
-    migrationsFolder: path.join(repoRoot, 'packages', 'api', 'drizzle'),
+    apiUrl: runtime.apiUrl ?? '',
+    appVersion: app.getVersion(),
+    contentVersion: store.activeVersion() ?? 'unknown',
+    updatedTo,
   };
 }
 
-function createWindow(url: string): void {
-  const win = new BrowserWindow({
-    width: 460,
-    height: 900,
-    title: 'Greedy',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+// Boot the runtime on the active version, recovering by rolling back through
+// known-good versions (and finally the seed) if a version won't start. This is
+// the launch-time counterpart to the updater's rollback.
+async function bootWithRecovery(): Promise<void> {
+  store.ensureSeeded();
+  const tried = new Set<string>();
 
-  // Open target=_blank / external links in the user's browser, not a new window.
-  win.webContents.setWindowOpenHandler(({ url: target }) => {
-    void shell.openExternal(target);
-    return { action: 'deny' };
-  });
+  for (;;) {
+    const version = store.activeVersion();
+    const paths = version ? store.activePaths() : null;
+    if (!version || !paths) {
+      store.ensureSeeded();
+      const seeded = store.activePaths();
+      if (!seeded) throw new Error('no usable content version (seed missing or corrupt)');
+      await runtime.start(seeded);
+      return;
+    }
+    if (tried.has(version)) throw new Error(`content ${version} failed and no fallback booted`);
+    tried.add(version);
 
-  void win.loadURL(url);
+    try {
+      await runtime.start(paths);
+      store.markKnownGood(version);
+      return;
+    } catch (err) {
+      log.error(`content ${version} failed to boot, recovering:`, err);
+      await runtime.stop().catch(() => undefined);
+      store.markBad(version);
+      const fallback = store.rollbackTarget(version);
+      if (fallback) store.switchTo(fallback);
+      else store.ensureSeeded();
+    }
+  }
 }
 
-// Wires auto-update against GitHub Releases. NOTE: on macOS this is a no-op
-// until the app is code-signed + notarized — Squirrel.Mac refuses to apply an
-// unsigned update. Once signing secrets are added (see electron-builder.yml),
-// this starts working with no code change.
-function setupAutoUpdates(): void {
-  autoUpdater.on('update-downloaded', () => {
-    void dialog
-      .showMessageBox({
-        type: 'info',
-        buttons: ['Restart now', 'Later'],
-        defaultId: 0,
-        cancelId: 1,
-        message: 'A new version of Greedy is ready.',
-        detail: 'Restart to install the update.',
-      })
-      .then((result) => {
-        if (result.response === 0) autoUpdater.quitAndInstall();
-      });
-  });
-  autoUpdater.on('error', (err) => {
-    console.error('[updater] error:', err);
-  });
-  autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-    console.error('[updater] check failed:', err);
+function setupShellAutoUpdate(): void {
+  // Separate, infrequent channel for updating the Electron binary itself (rare;
+  // a no-op until the app is signed + notarized). Off by default so it never
+  // competes with content updates.
+  if (!ENABLE_SHELL_AUTOUPDATE || !app.isPackaged) return;
+  void import('electron-updater').then(({ default: eu }) => {
+    eu.autoUpdater.on('error', (err) => log.error('shell autoUpdater error:', err));
+    eu.autoUpdater.checkForUpdatesAndNotify().catch((err) => log.error('shell update check:', err));
   });
 }
 
 async function start(): Promise<void> {
-  const { webRoot, migrationsFolder } = resolveResources();
-  const dataDir = path.join(app.getPath('userData'), 'greedy-db');
+  // Serve the active version's frontend over app://. The getter is evaluated per
+  // request, so after an in-process update the new web root is served instantly.
+  installAppProtocol(() => store.activePaths()?.web ?? null);
 
-  // 1) Embedded DB (creates the data dir + runs migrations) before serving.
-  const { db, close } = await createPgliteDb(dataDir, migrationsFolder);
-  closeDb = close;
+  await bootWithRecovery();
+  createWindow(windowContext());
 
-  // 2) Embedded API + SPA on a loopback ephemeral port (same origin → no CORS).
-  const { url } = await startServer({
-    db,
-    host: '127.0.0.1',
-    port: 0,
-    serveWebRoot: webRoot,
-    logger: false,
+  // Manual "check now" from the renderer (updates are automatic regardless).
+  ipcMain.handle('greedy:check-for-updates', async () => {
+    await updater?.checkAndApply();
   });
-  serverUrl = url;
 
-  // 3) Window (only after the server is listening — no port race).
-  createWindow(url);
+  updater = new Updater({
+    runtime,
+    appVersion: app.getVersion(),
+    emit,
+    recreateWindow: (updatedTo) => recreateWindow(windowContext(updatedTo)),
+  });
 
-  if (app.isPackaged) setupAutoUpdates();
+  if (CONTENT_UPDATES_ENABLED) {
+    setTimeout(() => updater?.start(), INITIAL_CHECK_DELAY_MS);
+  }
+  setupShellAutoUpdate();
 }
 
 app.whenReady().then(
   () => {
     start().catch((err) => {
-      console.error('Failed to start Greedy:', err);
+      log.error('Failed to start Greedy:', err);
       dialog.showErrorBox('Greedy failed to start', String(err?.stack ?? err));
       app.quit();
     });
 
     app.on('activate', () => {
       // macOS: re-open a window when the dock icon is clicked and none are open.
-      if (BrowserWindow.getAllWindows().length === 0 && serverUrl) createWindow(serverUrl);
+      if (!hasWindow() && runtime.apiUrl) createWindow(windowContext());
     });
   },
-  (err) => {
-    console.error('app failed to become ready:', err);
-  },
+  (err) => log.error('app failed to become ready:', err),
 );
 
-app.on('window-all-closed', () => {
-  app.quit();
-});
+app.on('window-all-closed', () => app.quit());
 
-// Flush PGlite to disk before exiting. before-quit doesn't await async handlers,
-// so prevent the first quit, close the db, then quit for real.
+// Flush the embedded DB before exiting. before-quit doesn't await async
+// handlers, so prevent the first quit, tear the runtime down, then quit.
 app.on('before-quit', (event) => {
-  if (isQuitting || !closeDb) return;
+  if (isQuitting) return;
   event.preventDefault();
   isQuitting = true;
-  closeDb()
-    .catch((err) => console.error('error closing db:', err))
+  updater?.stop();
+  runtime
+    .stop()
+    .catch((err) => log.error('error stopping runtime:', err))
     .finally(() => app.quit());
 });

@@ -20,19 +20,23 @@ The app has three primary desktop workflows:
 
 ## Stack & layout
 
-TypeScript monorepo (Yarn workspaces). Three packages under `packages/`:
+TypeScript monorepo (Yarn workspaces). Four packages under `packages/`:
 
 | Package    | Name              | Role                                                        |
 | ---------- | ----------------- | ----------------------------------------------------------- |
 | `shared/`  | `@greedy/shared`  | DTOs/types shared by api + web. Built to `dist/` (watched). |
 | `api/`     | `@greedy/api`     | Fastify server + Drizzle schema/migrations.                 |
 | `web/`     | `@greedy/web`     | React 19 + Vite + Tailwind v4 frontend.                     |
-| `desktop/` | `@greedy/desktop` | Electron wrapper → auto-updating macOS app.                 |
+| `desktop/` | `@greedy/desktop` | Static Electron **shell** that runs signed content bundles. |
 
 Dev runs in Docker Compose (postgres + shared + api + web) with hot reload. The
-**desktop build** is a separate target: Electron embeds the Fastify server and
-serves the SPA from one loopback origin, swapping Postgres for **PGlite**
-(embedded WASM Postgres) under the app's `userData`. See `README.md` for both.
+**desktop build** is a separate target: a thin, static Electron shell that loads
+the active **content bundle** (frontend + backend + migrations) from `userData`,
+serves the SPA over a custom `app://` protocol, runs the backend on a loopback
+port, and swaps Postgres for **PGlite** (embedded WASM Postgres) under `userData`.
+Frontend/backend/migration changes ship as **content updates**, not new app
+binaries — see the section below and
+[`packages/desktop/docs/CONTENT_UPDATES.md`](packages/desktop/docs/CONTENT_UPDATES.md).
 
 ## Two DB drivers, one app
 
@@ -45,6 +49,97 @@ Both speak the `pg-core` dialect, so queries and the `drizzle/` migrations are
 identical across them. `startServer()` ([`src/server.ts`](packages/api/src/server.ts))
 listens and resolves the real bound port (the desktop binds `port: 0`).
 [`src/index.ts`](packages/api/src/index.ts) is the standalone (Postgres) entry.
+
+## Desktop shell & content updates (read before touching `desktop/`)
+
+The desktop app is a **static Electron shell** that runs **signed content
+bundles**. The shell is stable infrastructure; app features live in bundles and
+update independently. There is **no paid dev license, no paid code signing, and
+no persistent server** — the updater pulls from a static source (GitHub Releases
+by default).
+
+**The shell ↔ content split (this is the load-bearing idea):**
+
+- **Shell** (`packages/desktop/src/main.ts`, `src/shell/*`, `src/preload.ts`,
+  bundled into the `.app`): the updater, the `app://` protocol, the PGlite driver
+  and the drizzle migration **runner**, the BrowserWindow, and the **bundled
+  ed25519 public key** (`src/shell/content-public-key.ts`) — the static trust root.
+- **Content bundle** (`web/` + `server/index.mjs` + `drizzle/` + `bundle.json`):
+  the React build, the backend code, and the migration **SQL**. Built by
+  `scripts/build-content.mjs`; the same files are shipped inside the app as the
+  **seed** (`content-seed/`, via electron-builder `extraResources`) to bootstrap
+  first launch.
+
+**Runtime wiring** (`src/shell/`):
+
+- `content-store.ts` — on-disk layout under `userData/content/`: `<version>/`
+  dirs, the atomically-swapped `current` symlink, `state.json`
+  (`active`/`previous`/`knownGood`/`bad`), seed bootstrap, rollback target
+  selection, pruning. `state.json` is the authoritative record (written last,
+  atomically); the symlink mirrors it.
+- `runtime.ts` — owns the PGlite DB (persists across updates) and the backend.
+  The backend's **code** comes from the active bundle, loaded via dynamic
+  `import()` — the **only** place the shell runs bundle-provided code, and only
+  after verification. DB driver + migrator stay in the shell.
+- `protocol.ts` — the privileged `app://greedy.app` scheme that serves the active
+  bundle's `web/` (SPA fallback to `index.html`), with a strict CSP.
+- `updater.ts` — the two-phase flow (see CONTENT_UPDATES.md): **acquire** (check
+  → download → verify SHA-256 + signature → extract → promote; failures never
+  touch the running app) then **activate** (stop → snapshot DB → atomic switch →
+  migrate → restart → recreate window; any failure rolls back to the last
+  known-good version and restores the DB snapshot).
+- `verify.ts` — the trust boundary: ed25519 manifest signature + SHA-256 archive
+  hash. `canonicalize()` here MUST match `scripts/pack-content.mjs` byte-for-byte.
+
+**Renderer ↔ shell:** the renderer loads from `app://` and reaches the backend at
+the loopback URL injected by the preload as `window.greedy.apiBaseUrl` (read in
+`web/src/lib/api.ts`). CORS on the backend is restricted to the `app://` origin.
+Update status reaches the UI via `window.greedy.onUpdateStatus`
+(`web/src/components/UpdateNotice.tsx`). Updates are **automatic**; the UI only
+informs.
+
+### Security rules (do not weaken)
+
+- `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`. The
+  preload (`src/preload.ts`) is the ONLY renderer↔main bridge — keep it tiny; do
+  not expose Node, `fs`, or generic IPC.
+- Nothing downloaded runs until BOTH the manifest signature (against the bundled
+  public key) AND the archive SHA-256 verify. Never bypass `verify.ts` or relax
+  the order in `updater.ts`.
+- The public key is the static trust root. Rotating it is a shell change
+  (`yarn gen:keys --force` + new app build). The private key
+  (`packages/desktop/keys/`) is a secret — gitignored, never committed.
+- Keep the `app://` CSP strict; the renderer must never load remote code.
+
+### Conventions for changing each layer
+
+- **Frontend / backend / migrations** → these are **content**. Make the change in
+  `web/` / `api/` (incl. `schema.ts` + `yarn db:generate`), bump
+  `packages/desktop/package.json` `version`, then `yarn content:release` (or test
+  locally first, below). You do **not** rebuild the shell for these.
+- **The shell itself** (updater, protocol, runtime, preload, Electron version,
+  public key) → this is a real app release: rebuild + re-ship the `.app`
+  (`yarn desktop:dist`), and bump `minShellVersion` on any future bundle that
+  depends on the new shell behaviour.
+- **The backend↔shell contract** (`src/content/server-entry.ts` `start()` and
+  `BundleMeta`) is versioned by `bundle.json.schemaVersion` + `minShellVersion`.
+  Changing it incompatibly means a shell release and a `minShellVersion` bump.
+- Migrations are forward-only and must be safe to run against existing user data
+  (the updater snapshots the DB before migrating and restores on failure, but a
+  destructive migration that "succeeds" is still destructive).
+
+### Desktop commands
+
+```bash
+yarn gen:keys                  # one-time: ed25519 keypair (public key -> shell)
+yarn desktop:dev               # build shell + seed bundle, launch Electron
+yarn desktop:dist              # package the .app/.dmg/.zip (the static shell)
+yarn content:build             # assemble a content bundle (+ refresh the seed)
+yarn content:pack              # tar + SHA-256 + sign -> content-dist/manifest.json
+yarn content:publish           # upload to the `content-latest` GitHub Release
+yarn content:release           # build + pack + publish in one shot
+yarn content:serve             # serve content-dist/ locally to test updates
+```
 
 ## Core domain model
 
@@ -116,6 +211,9 @@ Base URL `http://localhost:3000`. JSON in/out. Errors are
   for fast repeat entry.
 - Formatting is Prettier (Husky pre-commit runs lint-staged). Run
   `yarn format` / `yarn typecheck` before finishing.
+- **Desktop changes are content, not shell changes** unless you're touching the
+  updater/protocol/runtime/preload itself. See the desktop section above for the
+  rules and the release vs. content-update distinction.
 
 ## Workflows
 
@@ -145,6 +243,14 @@ yarn typecheck                     # all workspaces
   `yarn db:migrate`. Don't hand-edit generated SQL.
 - After changing `@greedy/shared`, the `shared` watcher rebuilds `dist/`; if you
   run pieces outside Docker, build it first (`yarn workspace @greedy/shared build`).
+- **`canonicalize()` must match across the boundary.** The signer
+  (`packages/desktop/scripts/pack-content.mjs`) and the verifier
+  (`packages/desktop/src/shell/verify.ts`) build the signed bytes the same way; if
+  they drift, every manifest fails to verify. Keep them identical.
+- **The seed is a build artifact.** `content-seed/` is regenerated by
+  `yarn content:build` from the current `web`/`api` builds and shipped via
+  `extraResources`. It's gitignored — rebuild it before `yarn desktop:dist`
+  (`yarn build:desktop` does this for you).
 
 ## Verifying changes
 
@@ -162,3 +268,10 @@ curl -s localhost:3000/videos/$ID/updates   # two rows; non-supplied metrics are
 For UI changes, load http://localhost:5173 and exercise the desktop workflows
 (Input, Videos, Reports) at a typical desktop viewport. Check that tables, forms,
 and charts make good use of horizontal space without awkward wrapping.
+
+To verify the **content updater** end-to-end (no publishing needed), follow the
+"Testing update + rollback locally" recipe in
+[`packages/desktop/docs/CONTENT_UPDATES.md`](packages/desktop/docs/CONTENT_UPDATES.md):
+build the current content as the seed, build+pack a bumped `CONTENT_VERSION`,
+`yarn content:serve`, and launch with `GREEDY_UPDATE_URL` pointed at it. Watch
+`userData/logs/updater.log`.

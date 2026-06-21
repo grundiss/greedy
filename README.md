@@ -79,29 +79,41 @@ published), so the stack needs to be `up` first.
 ## Desktop app (macOS)
 
 Greedy ships as a downloadable macOS app — no Docker, no Postgres, no setup for the
-end user. The Electron main process (`@greedy/desktop`) **embeds the Fastify server
-in-process**, which serves both the API and the built SPA from one loopback origin, and
-swaps PostgreSQL for **PGlite** (embedded WASM Postgres) stored under the app's
-`userData` directory. The existing schema and Drizzle migrations run unchanged.
+end user. `@greedy/desktop` is a **static Electron shell** that runs **signed content
+bundles**: it serves the SPA over a custom `app://` protocol, loads the backend from
+the active bundle, runs it on a loopback port, and swaps PostgreSQL for **PGlite**
+(embedded WASM Postgres) under the app's `userData`. The existing schema and Drizzle
+migrations run unchanged.
+
+Most updates ship as **content** (frontend + backend + migrations), verified by
+SHA-256 + an ed25519 signature and applied automatically — no new app binary, no
+code signing, no server. The full design, release workflow, and local test recipe
+live in [`packages/desktop/docs/CONTENT_UPDATES.md`](packages/desktop/docs/CONTENT_UPDATES.md).
 
 ```bash
-yarn desktop:dev    # build shared/api/web (same-origin) + launch the Electron app
-yarn desktop:dist   # build a .dmg + .zip locally (release/ dir), unsigned
+yarn gen:keys       # one-time: generate the content-signing keypair
+yarn desktop:dev    # build the shell + seed content bundle, launch Electron
+yarn desktop:dist   # package the static shell as .dmg + .zip (release/), unsigned
+yarn content:release  # build + sign + publish a content update (the common path)
 ```
 
 - **Dev stays a web app.** `yarn dev` (Docker + Postgres + Vite) is unchanged. The
   desktop build is a separate target; the API supports both DB drivers via an injected
   connection (`createPostgresDb` / `createPgliteDb`).
-- **Releases & auto-update.** Pushing a `v*` tag runs
-  [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds on
-  `macos-latest` and publishes `.dmg`, `.zip`, and `latest-mac.yml` to a GitHub Release.
-  The app checks that feed via `electron-updater` on launch.
+- **Content updates (primary).** A signed `manifest.json` + archive on a static feed
+  (default: a fixed `content-latest` GitHub Release). The app checks it, verifies the
+  signature + hash, applies in-process, and **rolls back** to the last known-good
+  version if anything fails.
+- **Shell binary updates (rare).** Pushing a `v*` tag runs
+  [`.github/workflows/release.yml`](.github/workflows/release.yml) to publish the
+  `.app`. A separate `electron-updater` channel exists but is off by default
+  (`GREEDY_SHELL_AUTOUPDATE=1`) and is a no-op until the app is signed + notarized.
 - ⚠️ **Code signing is off for now.** Until the app is signed + notarized with an Apple
-  Developer ID, users must right-click → **Open** past Gatekeeper on first launch, and
-  **macOS auto-update will not apply** (the update downloads but Squirrel.Mac refuses it).
-  To enable: add the signing secrets in CI and flip `identity`/`notarize` in
-  [`packages/desktop/electron-builder.yml`](packages/desktop/electron-builder.yml) — no
-  other code changes needed.
+  Developer ID, users must right-click → **Open** past Gatekeeper on first launch.
+  Content updates do **not** depend on Apple signing — they use the app's own ed25519
+  signature, so auto-update works regardless. To enable shell auto-update later, add the
+  signing secrets in CI and flip `identity`/`notarize` in
+  [`packages/desktop/electron-builder.yml`](packages/desktop/electron-builder.yml).
 
 ## Notes
 

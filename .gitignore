@@ -28,3 +28,9 @@ packages/web/dist/
 
 # electron-builder output
 packages/desktop/release/
+
+# content updates: signing secret + generated bundles (rebuilt from source)
+packages/desktop/keys/
+packages/desktop/content-build/
+packages/desktop/content-dist/
+packages/desktop/content-seed/
