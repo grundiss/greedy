@@ -357,9 +357,14 @@ export function VideosPage() {
                 <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Recorded</th>
+                    <th className="px-4 py-3 font-semibold">Views</th>
                     <th className="px-4 py-3 font-semibold">Likes</th>
                     <th className="px-4 py-3 font-semibold">Saves</th>
                     <th className="px-4 py-3 font-semibold">Watch depth</th>
+                    <th className="px-4 py-3 font-semibold">Comments</th>
+                    <th className="px-4 py-3 font-semibold">Reposts</th>
+                    <th className="px-4 py-3 font-semibold">New followers</th>
+                    <th className="px-4 py-3 font-semibold">Hate</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -368,11 +373,18 @@ export function VideosPage() {
                       <td className="px-4 py-3 text-slate-700">
                         {formatDateTime(update.recordedAt)}
                       </td>
+                      <td className="px-4 py-3 text-slate-600">{formatMetric(update.views)}</td>
                       <td className="px-4 py-3 text-slate-600">{formatMetric(update.likes)}</td>
                       <td className="px-4 py-3 text-slate-600">{formatMetric(update.saves)}</td>
                       <td className="px-4 py-3 text-slate-600">
                         {formatMetric(update.depthPct, '%')}
                       </td>
+                      <td className="px-4 py-3 text-slate-600">{formatMetric(update.comments)}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatMetric(update.reposts)}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatMetric(update.newFollowers)}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{formatBool(update.hate)}</td>
                     </tr>
                   ))}
                 </tbody>

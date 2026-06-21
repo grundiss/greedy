@@ -1,10 +1,17 @@
-import type { DbExportPayload, GlobalUpdate, Update, Video } from '@greedy/shared';
+import type { DbExportPayload, Promotion } from '@greedy/shared';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { globalUpdates, updates, videos } from '../db/schema.js';
-import { serializeGlobalUpdate, serializeUpdate, serializeVideo } from './videos.js';
+import { globalUpdates, promotions, updates, videos } from '../db/schema.js';
+import {
+  serializeGlobalUpdate,
+  serializePromotion,
+  serializeUpdate,
+  serializeVideo,
+} from './videos.js';
 
-const DUMP_VERSION = 1;
+// v1 dumps predate the extra update metrics + the promotions table. They still
+// import (missing fields default to null / no promotions); exports are always v2.
+const DUMP_VERSION = 2;
 const PAYLOAD_PREFIX = '-- greedy-data: ';
 
 function escapeSqlString(value: string): string {
@@ -47,7 +54,7 @@ function renderDump(payload: DbExportPayload): string {
     ...encodePayload(payload),
     '',
     'BEGIN;',
-    'TRUNCATE TABLE updates, global_updates, videos RESTART IDENTITY CASCADE;',
+    'TRUNCATE TABLE promotions, updates, global_updates, videos RESTART IDENTITY CASCADE;',
   ];
 
   for (const video of payload.videos) {
@@ -72,13 +79,18 @@ function renderDump(payload: DbExportPayload): string {
 
   for (const update of payload.updates) {
     lines.push(
-      `INSERT INTO updates (id, video_id, recorded_at, likes, saves, depth_pct, created_at) VALUES (${[
+      `INSERT INTO updates (id, video_id, recorded_at, likes, saves, depth_pct, views, comments, reposts, new_followers, hate, created_at) VALUES (${[
         update.id,
         update.videoId,
         update.recordedAt,
         update.likes,
         update.saves,
         update.depthPct,
+        update.views,
+        update.comments,
+        update.reposts,
+        update.newFollowers,
+        update.hate,
         update.createdAt,
       ]
         .map(sqlValue)
@@ -99,10 +111,26 @@ function renderDump(payload: DbExportPayload): string {
     );
   }
 
+  for (const promotion of payload.promotions) {
+    lines.push(
+      `INSERT INTO promotions (id, video_id, recorded_at, budget, followers_gained, created_at) VALUES (${[
+        promotion.id,
+        promotion.videoId,
+        promotion.recordedAt,
+        promotion.budget,
+        promotion.followersGained,
+        promotion.createdAt,
+      ]
+        .map(sqlValue)
+        .join(', ')});`,
+    );
+  }
+
   lines.push(
     "SELECT setval(pg_get_serial_sequence('videos', 'id'), COALESCE((SELECT MAX(id) FROM videos), 1), (SELECT COUNT(*) > 0 FROM videos));",
     "SELECT setval(pg_get_serial_sequence('updates', 'id'), COALESCE((SELECT MAX(id) FROM updates), 1), (SELECT COUNT(*) > 0 FROM updates));",
     "SELECT setval(pg_get_serial_sequence('global_updates', 'id'), COALESCE((SELECT MAX(id) FROM global_updates), 1), (SELECT COUNT(*) > 0 FROM global_updates));",
+    "SELECT setval(pg_get_serial_sequence('promotions', 'id'), COALESCE((SELECT MAX(id) FROM promotions), 1), (SELECT COUNT(*) > 0 FROM promotions));",
     'COMMIT;',
     '',
   );
@@ -116,10 +144,11 @@ function requireArray<T>(value: T[] | undefined, name: string): T[] {
 
 export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
   app.get('/db/export', async (_request, reply) => {
-    const [videoRows, updateRows, globalUpdateRows] = await Promise.all([
+    const [videoRows, updateRows, globalUpdateRows, promotionRows] = await Promise.all([
       app.db.select().from(videos),
       app.db.select().from(updates),
       app.db.select().from(globalUpdates),
+      app.db.select().from(promotions),
     ]);
     const payload: DbExportPayload = {
       version: DUMP_VERSION,
@@ -127,6 +156,7 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
       videos: videoRows.map(serializeVideo),
       updates: updateRows.map(serializeUpdate),
       globalUpdates: globalUpdateRows.map(serializeGlobalUpdate),
+      promotions: promotionRows.map(serializePromotion),
     };
     reply.header('Content-Type', 'application/sql; charset=utf-8');
     reply.header(
@@ -145,18 +175,24 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
     }
 
     let payload: DbExportPayload | null;
+    let promotionsIn: Promotion[] = [];
     try {
       payload = decodePayload(dump);
-      if (!payload || payload.version !== DUMP_VERSION) throw new Error('unsupported dump format');
+      if (!payload || (payload.version !== 1 && payload.version !== 2)) {
+        throw new Error('unsupported dump format');
+      }
       requireArray(payload.videos, 'videos');
       requireArray(payload.updates, 'updates');
       requireArray(payload.globalUpdates, 'globalUpdates');
+      // promotions only exist in v2 dumps; tolerate their absence in v1.
+      promotionsIn = Array.isArray(payload.promotions) ? payload.promotions : [];
     } catch {
       reply.code(400);
       return reply.send({ error: 'BadRequest', message: 'unsupported Greedy SQL dump' });
     }
 
     await app.db.transaction(async (tx) => {
+      await tx.delete(promotions);
       await tx.delete(updates);
       await tx.delete(globalUpdates);
       await tx.delete(videos);
@@ -186,6 +222,11 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
             likes: update.likes,
             saves: update.saves,
             depthPct: update.depthPct,
+            views: update.views ?? null,
+            comments: update.comments ?? null,
+            reposts: update.reposts ?? null,
+            newFollowers: update.newFollowers ?? null,
+            hate: update.hate ?? null,
             createdAt: new Date(update.createdAt),
           })),
         );
@@ -197,6 +238,18 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
             recordedAt: new Date(globalUpdate.recordedAt),
             followers: globalUpdate.followers,
             createdAt: new Date(globalUpdate.createdAt),
+          })),
+        );
+      }
+      if (promotionsIn.length) {
+        await tx.insert(promotions).values(
+          promotionsIn.map((promotion) => ({
+            id: promotion.id,
+            videoId: promotion.videoId,
+            recordedAt: new Date(promotion.recordedAt),
+            budget: promotion.budget ?? null,
+            followersGained: promotion.followersGained ?? null,
+            createdAt: new Date(promotion.createdAt),
           })),
         );
       }
@@ -215,6 +268,11 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
           "SELECT setval(pg_get_serial_sequence('global_updates', 'id'), COALESCE((SELECT MAX(id) FROM global_updates), 1), (SELECT COUNT(*) > 0 FROM global_updates))",
         ),
       );
+      await tx.execute(
+        sql.raw(
+          "SELECT setval(pg_get_serial_sequence('promotions', 'id'), COALESCE((SELECT MAX(id) FROM promotions), 1), (SELECT COUNT(*) > 0 FROM promotions))",
+        ),
+      );
     });
 
     return {
@@ -222,6 +280,7 @@ export async function dbDumpRoutes(app: FastifyInstance): Promise<void> {
         videos: payload.videos.length,
         updates: payload.updates.length,
         globalUpdates: payload.globalUpdates.length,
+        promotions: promotionsIn.length,
       },
     };
   });

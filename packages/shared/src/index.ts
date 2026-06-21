@@ -52,6 +52,11 @@ export interface Update {
   likes: number | null;
   saves: number | null;
   depthPct: number | null;
+  views: number | null;
+  comments: number | null;
+  reposts: number | null;
+  newFollowers: number | null;
+  hate: boolean | null;
   createdAt: string;
 }
 
@@ -62,6 +67,17 @@ export interface GlobalUpdate {
   createdAt: string;
 }
 
+// A paid ad campaign promoting a single video. `budget` and `followersGained`
+// are both nullable — a bare row just records that the video was promoted.
+export interface Promotion {
+  id: number;
+  videoId: number;
+  recordedAt: string;
+  budget: number | null;
+  followersGained: number | null;
+  createdAt: string;
+}
+
 // A partial update: at least one metric must be present. `recordedAt` defaults
 // to "now" on the server when omitted.
 export interface NewUpdateInput {
@@ -69,6 +85,11 @@ export interface NewUpdateInput {
   likes?: number | null;
   saves?: number | null;
   depthPct?: number | null;
+  views?: number | null;
+  comments?: number | null;
+  reposts?: number | null;
+  newFollowers?: number | null;
+  hate?: boolean | null;
 }
 
 export interface NewGlobalUpdateInput {
@@ -76,16 +97,26 @@ export interface NewGlobalUpdateInput {
   followers: number;
 }
 
+// Log an ad campaign. `recordedAt` defaults to "now" when omitted; provide at
+// least one of `budget` / `followersGained`.
+export interface NewPromotionInput {
+  recordedAt?: string;
+  budget?: number | null;
+  followersGained?: number | null;
+}
+
 export interface VideoWithUpdates extends Video {
   updates: Update[];
+  promotions: Promotion[];
 }
 
 export interface DbExportPayload {
-  version: 1;
+  version: number;
   exportedAt: string;
   videos: Video[];
   updates: Update[];
   globalUpdates: GlobalUpdate[];
+  promotions: Promotion[];
 }
 
 export interface DbImportResult {
@@ -93,5 +124,6 @@ export interface DbImportResult {
     videos: number;
     updates: number;
     globalUpdates: number;
+    promotions: number;
   };
 }

@@ -143,7 +143,7 @@ yarn content:serve             # serve content-dist/ locally to test updates
 
 ## Core domain model
 
-Two tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
+Four tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
 
 - **`videos`** — the content. Has descriptive fields (`title`, `description`,
   `durationSeconds`, `tags`) plus **editorial attributes** used for analysis:
@@ -151,17 +151,32 @@ Two tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
   `soundType` (`'music' | 'voice'`), `subtitles`. Enum-like columns are stored as
   `text` in the DB; the allowed values live as union types in shared
   (`HookType`, `SoundType`) and are validated server-side.
-- **`updates`** — timestamped metric snapshots. **Every metric column
-  (`likes`, `saves`, `depthPct`) is nullable.** This is the central design
-  decision: an update carries only the metric(s) the user entered at that moment
-  (e.g. just `likes`). Reports plot each metric using only the rows where it is
-  non-null. `recordedAt` defaults to now but can be backdated.
+- **`updates`** — timestamped, per-video metric snapshots. **Every metric column
+  (`likes`, `saves`, `depthPct`, `views`, `comments`, `reposts`, `newFollowers`)
+  is nullable**, plus a nullable `hate` flag (whether hateful comments showed up).
+  This is the central design decision: an update carries only the metric(s) the
+  user entered at that moment (e.g. just `likes`). Reports plot each numeric
+  metric using only the rows where it is non-null. `recordedAt` defaults to now
+  but can be backdated. The POST requires **≥1 numeric metric** — `hate` is a flag
+  that can't stand on its own.
+- **`global_updates`** — account-level snapshots not tied to a video
+  (`followers`).
+- **`promotions`** — paid ad campaigns promoting one video. A row records that a
+  video was promoted; `budget` and `followersGained` are both nullable details.
+  Per-video like `updates`; the POST requires ≥1 of budget/followersGained.
 
-> When adding a new metric: add a nullable column to `updates`, the field to the
-> `Update`/`NewUpdateInput` DTOs, one input in the Log Update form, and one
-> entry in the `METRICS` array in `ReportsPage.tsx`. When adding a new video
-> attribute: column on `videos`, field on `Video`/`NewVideoInput`, a serializer
-> line + validation in the API, and an input in the Add Video form.
+> When adding a new per-video metric: add a nullable column to `updates`, the
+> field to the `Update`/`NewUpdateInput` DTOs + `serializeUpdate`, the coercion +
+> `≥1 metric` check in the update route, the export column list **and** import
+> mapping in `dbDump.ts`, one input in the Log Update form, one column in the
+> VideosPage updates-log table, and (numeric metrics only) one entry in the
+> `METRICS` array in `ReportsPage.tsx`. When adding a new video attribute: column
+> on `videos`, field on `Video`/`NewVideoInput`, a serializer line + validation in
+> the API, and an input in the Add Video form.
+
+> The DB dump (`dbDump.ts`) is versioned (`DUMP_VERSION`). Adding a table/column
+> to the payload bumps it; keep the importer tolerant of older versions so old
+> dumps still load (missing arrays → empty, missing fields → null).
 
 ## Key files
 
@@ -186,16 +201,18 @@ Two tables in [`packages/api/src/db/schema.ts`](packages/api/src/db/schema.ts):
 Base URL `http://localhost:3000`. JSON in/out. Errors are
 `{ error, message }` with an appropriate status.
 
-| Method | Path                  | Notes                                                             |
-| ------ | --------------------- | ----------------------------------------------------------------- |
-| GET    | `/videos`             | List, newest first.                                               |
-| POST   | `/videos`             | Create. Requires non-empty `title`.                               |
-| GET    | `/videos/:id`         | Returns `VideoWithUpdates` (video + full time series).            |
-| DELETE | `/videos/:id`         | Cascades to its updates.                                          |
-| POST   | `/videos/:id/updates` | Partial update. **Requires ≥1 metric**; `depthPct` clamped 0–100. |
-| GET    | `/videos/:id/updates` | Updates oldest-first.                                             |
-| GET    | `/db/export`          | Downloads a Greedy SQL dump of all app data.                      |
-| POST   | `/db/import`          | Imports a Greedy SQL dump and replaces current app data.          |
+| Method | Path                     | Notes                                                             |
+| ------ | ------------------------ | ----------------------------------------------------------------- |
+| GET    | `/videos`                | List, newest first.                                               |
+| POST   | `/videos`                | Create. Requires non-empty `title`.                               |
+| GET    | `/videos/:id`            | Returns `VideoWithUpdates` (video + updates + promotions).        |
+| DELETE | `/videos/:id`            | Cascades to its updates and promotions.                           |
+| POST   | `/videos/:id/updates`    | Partial update. **Requires ≥1 metric**; `depthPct` clamped 0–100. |
+| GET    | `/videos/:id/updates`    | Updates oldest-first.                                             |
+| POST   | `/videos/:id/promotions` | Log an ad campaign. **Requires budget or followersGained.**       |
+| GET    | `/videos/:id/promotions` | Promotions oldest-first.                                          |
+| GET    | `/db/export`             | Downloads a Greedy SQL dump of all app data.                      |
+| POST   | `/db/import`             | Imports a Greedy SQL dump and replaces current app data.          |
 
 ## Conventions
 

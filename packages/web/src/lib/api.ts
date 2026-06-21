@@ -2,8 +2,10 @@ import type {
   DbImportResult,
   GlobalUpdate,
   NewGlobalUpdateInput,
+  NewPromotionInput,
   NewUpdateInput,
   NewVideoInput,
+  Promotion,
   Update,
   Video,
   VideoWithUpdates,
@@ -55,6 +57,12 @@ export const api = {
     request<DbImportResult>('/db/import', { method: 'POST', body: JSON.stringify({ sql }) }),
   addUpdate: (videoId: number, input: NewUpdateInput) =>
     request<Update>(`/videos/${videoId}/updates`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  listPromotions: (videoId: number) => request<Promotion[]>(`/videos/${videoId}/promotions`),
+  addPromotion: (videoId: number, input: NewPromotionInput) =>
+    request<Promotion>(`/videos/${videoId}/promotions`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

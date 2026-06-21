@@ -148,7 +148,7 @@ export function SettingsPage() {
       const result = await api.importDb(await file.text());
       setMsg({
         kind: 'ok',
-        text: `Imported ${result.imported.videos} videos, ${result.imported.updates} updates, and ${result.imported.globalUpdates} global updates ✓`,
+        text: `Imported ${result.imported.videos} videos, ${result.imported.updates} updates, ${result.imported.globalUpdates} global updates, and ${result.imported.promotions} promotions ✓`,
       });
     } catch (err) {
       setMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Import failed' });

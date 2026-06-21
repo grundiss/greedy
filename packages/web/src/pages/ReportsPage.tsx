@@ -1,4 +1,4 @@
-import type { GlobalUpdate, Update, Video, VideoWithUpdates } from '@greedy/shared';
+import type { GlobalUpdate, Promotion, Update, Video, VideoWithUpdates } from '@greedy/shared';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -13,12 +13,16 @@ import {
 import { Card, Field, Select } from '../components/ui';
 import { api } from '../lib/api';
 
-type MetricKey = 'likes' | 'saves' | 'depthPct';
+type MetricKey = 'likes' | 'saves' | 'depthPct' | 'views' | 'comments' | 'reposts' | 'newFollowers';
 
 const METRICS: { key: MetricKey; label: string; color: string; suffix?: string }[] = [
+  { key: 'views', label: 'Views', color: '#2563eb' },
   { key: 'likes', label: 'Likes', color: '#e11d48' },
   { key: 'saves', label: 'Saves', color: '#0891b2' },
   { key: 'depthPct', label: 'Watch depth', color: '#7c3aed', suffix: '%' },
+  { key: 'comments', label: 'Comments', color: '#f59e0b' },
+  { key: 'reposts', label: 'Reposts', color: '#0d9488' },
+  { key: 'newFollowers', label: 'New followers', color: '#db2777' },
 ];
 
 function formatTime(iso: string): string {
@@ -121,8 +125,39 @@ export function ReportsPage() {
         {data
           ? METRICS.map((m) => <MetricChart key={m.key} metric={m} updates={data.updates} />)
           : null}
+
+        {data ? <PromotionsCard promotions={data.promotions} /> : null}
       </div>
     </div>
+  );
+}
+
+function PromotionsCard({ promotions }: { promotions: Promotion[] }) {
+  return (
+    <Card title="Promotions">
+      {promotions.length === 0 ? (
+        <p className="py-8 text-center text-sm text-slate-400">No promotions yet</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-slate-400">
+              <th className="pb-2 font-medium">When</th>
+              <th className="pb-2 text-right font-medium">Budget</th>
+              <th className="pb-2 text-right font-medium">Followers gained</th>
+            </tr>
+          </thead>
+          <tbody>
+            {promotions.map((p) => (
+              <tr key={p.id} className="border-t border-slate-100">
+                <td className="py-2 text-slate-600">{formatTime(p.recordedAt)}</td>
+                <td className="py-2 text-right tabular-nums">{p.budget ?? '—'}</td>
+                <td className="py-2 text-right tabular-nums">{p.followersGained ?? '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 

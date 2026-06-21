@@ -31,6 +31,11 @@ export const updates = pgTable('updates', {
   likes: integer('likes'),
   saves: integer('saves'),
   depthPct: integer('depth_pct'),
+  views: integer('views'),
+  comments: integer('comments'),
+  reposts: integer('reposts'),
+  newFollowers: integer('new_followers'),
+  hate: boolean('hate'), // whether hateful comments showed up by this snapshot
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -38,6 +43,22 @@ export type Video = typeof videos.$inferSelect;
 export type NewVideo = typeof videos.$inferInsert;
 export type Update = typeof updates.$inferSelect;
 export type NewUpdate = typeof updates.$inferInsert;
+
+// A paid ad campaign promoting one video. A row simply records that the video
+// was promoted; `budget` and `followersGained` are the (nullable) details.
+export const promotions = pgTable('promotions', {
+  id: serial('id').primaryKey(),
+  videoId: integer('video_id')
+    .notNull()
+    .references(() => videos.id, { onDelete: 'cascade' }),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+  budget: integer('budget'),
+  followersGained: integer('followers_gained'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Promotion = typeof promotions.$inferSelect;
+export type NewPromotion = typeof promotions.$inferInsert;
 
 // A timestamped snapshot of account-level metrics that are not tied to one video.
 export const globalUpdates = pgTable('global_updates', {
