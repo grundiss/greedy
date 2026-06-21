@@ -8,7 +8,10 @@ import {
   Cell,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -19,10 +22,19 @@ import {
   aggregateByCreativeAttribute,
   aggregateByDuration,
   aggregateByTag,
+  buildAccountGrowthEvents,
   buildNextActions,
+  buildPortfolioPoints,
+  buildPromotionReport,
   buildVideoReportRows,
   median,
+  type AccountGrowthEvent,
+  type AccountGrowthEventKind,
   type NextAction,
+  type PortfolioPoint,
+  type PortfolioQuadrant,
+  type PromotionReportRow,
+  type PromotionVerdict,
   type Recommendation,
   type ReportSegment,
 } from '../lib/reportAnalytics';
@@ -128,6 +140,12 @@ export function ReportsPage() {
   }, [reportRows]);
 
   const nextActions = useMemo(() => buildNextActions(reportRows), [reportRows]);
+  const portfolioPoints = useMemo(() => buildPortfolioPoints(reportRows), [reportRows]);
+  const promotionReport = useMemo(() => buildPromotionReport(reportRows), [reportRows]);
+  const accountGrowthEvents = useMemo(
+    () => buildAccountGrowthEvents(reportRows, globalUpdates),
+    [reportRows, globalUpdates],
+  );
 
   const durationSegments = useMemo(() => aggregateByDuration(reportRows), [reportRows]);
   const tagSegments = useMemo(() => aggregateByTag(reportRows), [reportRows]);
@@ -179,6 +197,15 @@ export function ReportsPage() {
         soundSegments={soundSegments}
         subtitleSegments={subtitleSegments}
       />
+
+      {/* Content portfolio */}
+      <ContentPortfolioSection points={portfolioPoints} />
+
+      {/* Promotion ROI */}
+      <PromotionROISection rows={promotionReport} />
+
+      {/* Account growth timeline */}
+      <AccountGrowthTimelineSection events={accountGrowthEvents} />
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
@@ -657,6 +684,352 @@ function WhatWorksSection({
           <SegmentsView segments={subtitleSegments} nameHeader="Subtitles" showDepth showSaves />
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Content portfolio
+// ---------------------------------------------------------------------------
+
+const QUADRANT_COLORS: Record<PortfolioQuadrant, string> = {
+  star: '#16a34a',
+  'niche-gem': '#2563eb',
+  'viral-but-weak': '#f59e0b',
+  dead: '#94a3b8',
+};
+
+const QUADRANT_LABELS: Record<PortfolioQuadrant, string> = {
+  star: 'Stars',
+  'niche-gem': 'Niche gems',
+  'viral-but-weak': 'Viral but weak',
+  dead: 'Dead content',
+};
+
+const QUADRANT_DESC: Record<PortfolioQuadrant, string> = {
+  star: 'High reach, high conversion',
+  'niche-gem': 'Low reach, high conversion',
+  'viral-but-weak': 'High reach, low conversion',
+  dead: 'Low reach, low conversion',
+};
+
+function PortfolioTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: PortfolioPoint }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0]?.payload;
+  if (!p) return null;
+  return (
+    <div className="max-w-52 rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg">
+      <p className="font-semibold leading-snug text-slate-900">{p.title}</p>
+      <div className="mt-1.5 space-y-0.5 text-slate-600">
+        <p>Views: {p.views.toLocaleString()}</p>
+        <p>Followers / 1k views: {p.followersPer1kViews.toFixed(1)}</p>
+        {p.savesPer1kViews !== null && <p>Saves / 1k views: {p.savesPer1kViews.toFixed(1)}</p>}
+        {p.promoted && <p className="text-purple-600">Promoted</p>}
+      </div>
+      <p className="mt-1.5 font-medium text-slate-700">{QUADRANT_LABELS[p.quadrant]}</p>
+      <p className="mt-0.5 leading-snug text-slate-500">{p.recommendation}</p>
+    </div>
+  );
+}
+
+function ContentPortfolioSection({ points }: { points: PortfolioPoint[] }) {
+  if (points.length < 3) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-xl font-bold tracking-tight text-slate-900">Content portfolio</h3>
+          <p className="mt-0.5 text-sm text-slate-500">
+            How your videos compare on reach vs. conversion.
+          </p>
+        </div>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+          Add views and new followers for at least 3 videos to unlock the portfolio matrix.
+        </div>
+      </div>
+    );
+  }
+
+  const allViews = points.map((p) => p.views);
+  const allF1k = points.map((p) => p.followersPer1kViews);
+  const medV =
+    allViews.length > 0
+      ? [...allViews].sort((a, b) => a - b)[Math.floor(allViews.length / 2)]
+      : null;
+  const medF =
+    allF1k.length > 0 ? [...allF1k].sort((a, b) => a - b)[Math.floor(allF1k.length / 2)] : null;
+
+  const byQuadrant = (['star', 'niche-gem', 'viral-but-weak', 'dead'] as PortfolioQuadrant[]).map(
+    (q) => ({ quadrant: q, data: points.filter((p) => p.quadrant === q) }),
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-xl font-bold tracking-tight text-slate-900">Content portfolio</h3>
+        <p className="mt-0.5 text-sm text-slate-500">
+          How your videos compare on reach vs. conversion.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <ResponsiveContainer width="100%" height={320}>
+          <ScatterChart margin={{ top: 12, right: 24, bottom: 24, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis
+              type="number"
+              dataKey="views"
+              name="Views"
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v: number) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+              label={{
+                value: 'Views →',
+                position: 'insideBottomRight',
+                offset: -4,
+                fill: '#94a3b8',
+                fontSize: 11,
+              }}
+            />
+            <YAxis
+              type="number"
+              dataKey="followersPer1kViews"
+              name="Followers / 1k views"
+              tick={{ fontSize: 11 }}
+              label={{
+                value: 'Followers / 1k ↑',
+                angle: -90,
+                position: 'insideLeft',
+                offset: 12,
+                fill: '#94a3b8',
+                fontSize: 11,
+              }}
+            />
+            <Tooltip content={(props: any) => <PortfolioTooltip {...props} />} />
+            {medV != null && <ReferenceLine x={medV} stroke="#cbd5e1" strokeDasharray="4 4" />}
+            {medF != null && <ReferenceLine y={medF} stroke="#cbd5e1" strokeDasharray="4 4" />}
+            {byQuadrant.map(({ quadrant, data }) =>
+              data.length === 0 ? null : (
+                <Scatter
+                  key={quadrant}
+                  name={QUADRANT_LABELS[quadrant]}
+                  data={data}
+                  fill={QUADRANT_COLORS[quadrant]}
+                  shape={(shapeProps: any) => {
+                    const cx = Number(shapeProps.cx);
+                    const cy = Number(shapeProps.cy);
+                    const fill = String(shapeProps.fill ?? QUADRANT_COLORS[quadrant]);
+                    const promoted = Boolean(shapeProps.promoted);
+                    if (promoted) {
+                      return (
+                        <g>
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={9}
+                            fill="none"
+                            stroke={fill}
+                            strokeWidth={2.5}
+                          />
+                          <circle cx={cx} cy={cy} r={3} fill={fill} />
+                        </g>
+                      );
+                    }
+                    return <circle cx={cx} cy={cy} r={6} fill={fill} fillOpacity={0.85} />;
+                  }}
+                />
+              ),
+            )}
+          </ScatterChart>
+        </ResponsiveContainer>
+
+        {/* Quadrant legend */}
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 sm:grid-cols-4">
+          {(['star', 'niche-gem', 'viral-but-weak', 'dead'] as PortfolioQuadrant[]).map((q) => (
+            <div key={q} className="flex items-start gap-2">
+              <span
+                className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: QUADRANT_COLORS[q] }}
+              />
+              <div>
+                <p className="text-xs font-semibold text-slate-700">{QUADRANT_LABELS[q]}</p>
+                <p className="text-xs text-slate-400">{QUADRANT_DESC[q]}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Promoted indicator legend */}
+        <div className="mt-3 flex items-center gap-4 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <circle cx="7" cy="7" r="5" fill="#64748b" fillOpacity={0.85} />
+            </svg>
+            Organic
+          </span>
+          <span className="flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 14 14">
+              <circle cx="7" cy="7" r="6" fill="none" stroke="#64748b" strokeWidth="2" />
+              <circle cx="7" cy="7" r="2" fill="#64748b" />
+            </svg>
+            Promoted
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Promotion ROI
+// ---------------------------------------------------------------------------
+
+const VERDICT_META: Record<PromotionVerdict, { label: string; bg: string; text: string }> = {
+  scale: { label: 'Scale', bg: 'bg-green-100', text: 'text-green-700' },
+  watch: { label: 'Watch', bg: 'bg-amber-100', text: 'text-amber-700' },
+  stop: { label: 'Stop', bg: 'bg-red-100', text: 'text-red-700' },
+  'missing-data': { label: 'Needs data', bg: 'bg-slate-100', text: 'text-slate-500' },
+};
+
+function PromotionROISection({ rows }: { rows: PromotionReportRow[] }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-xl font-bold tracking-tight text-slate-900">Promotion ROI</h3>
+        <p className="mt-0.5 text-sm text-slate-500">Was your ad spend worth it?</p>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+          No promotions yet. Once you promote a video, this report will show whether the spend was
+          worth it.
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                  <th className="px-4 py-3 font-medium">Video</th>
+                  <th className="px-4 py-3 text-right font-medium">Budget</th>
+                  <th className="px-4 py-3 text-right font-medium">Promo followers</th>
+                  <th className="px-4 py-3 text-right font-medium">Cost / follower</th>
+                  <th className="px-4 py-3 text-right font-medium">Organic followers / 1k views</th>
+                  <th className="px-4 py-3 text-right font-medium">Depth</th>
+                  <th className="px-4 py-3 font-medium">Verdict</th>
+                  <th className="px-4 py-3 font-medium">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const vm = VERDICT_META[row.verdict];
+                  return (
+                    <tr key={row.videoId} className="border-t border-slate-100">
+                      <td className="px-4 py-2.5 font-medium text-slate-800">{row.title}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">
+                        {row.totalBudget !== null ? row.totalBudget : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">
+                        {row.promotionFollowers !== null ? row.promotionFollowers : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">
+                        {row.costPerFollower !== null ? row.costPerFollower.toFixed(2) : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">
+                        {row.followersPer1kViews !== null
+                          ? row.followersPer1kViews.toFixed(1)
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-slate-600">
+                        {row.depthPct !== null ? `${row.depthPct.toFixed(0)}%` : '—'}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${vm.bg} ${vm.text}`}
+                        >
+                          {vm.label}
+                        </span>
+                      </td>
+                      <td className="max-w-xs px-4 py-2.5 text-xs leading-relaxed text-slate-500">
+                        {row.reason}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Account growth timeline
+// ---------------------------------------------------------------------------
+
+const GROWTH_KIND_META: Record<
+  AccountGrowthEventKind,
+  { label: string; bg: string; text: string }
+> = {
+  'video-published': { label: 'Published', bg: 'bg-blue-100', text: 'text-blue-700' },
+  promotion: { label: 'Promotion', bg: 'bg-purple-100', text: 'text-purple-700' },
+  'follower-spike': { label: 'Spike', bg: 'bg-green-100', text: 'text-green-700' },
+};
+
+function AccountGrowthTimelineSection({ events }: { events: AccountGrowthEvent[] }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-xl font-bold tracking-tight text-slate-900">Account growth timeline</h3>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Content activity mapped against account growth. Correlation only — not proof of cause.
+        </p>
+      </div>
+
+      {events.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 py-10 text-center text-sm text-slate-400">
+          Log account follower updates to connect content with account growth.
+        </div>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white">
+          <ul className="divide-y divide-slate-100">
+            {events.map((event) => {
+              const km = GROWTH_KIND_META[event.kind];
+              const dateStr = new Date(event.date).toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              });
+              return (
+                <li key={event.id} className="flex gap-4 px-4 py-3">
+                  <time className="w-24 shrink-0 pt-0.5 text-xs text-slate-400">{dateStr}</time>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${km.bg} ${km.text}`}
+                      >
+                        {km.label}
+                      </span>
+                      <p className="text-sm font-medium text-slate-800">{event.title}</p>
+                    </div>
+                    <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                      {event.description}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Update, VideoWithUpdates } from '@greedy/shared';
+import type { GlobalUpdate, Update, VideoWithUpdates } from '@greedy/shared';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -590,4 +590,262 @@ export function buildNextActions(rows: VideoReportRow[]): NextAction[] {
   return actions
     .sort((a, b) => ACTION_ORDER.indexOf(a.kind) - ACTION_ORDER.indexOf(b.kind))
     .slice(0, 5);
+}
+
+// ---------------------------------------------------------------------------
+// Content portfolio matrix
+// ---------------------------------------------------------------------------
+
+export type PortfolioQuadrant = 'star' | 'niche-gem' | 'viral-but-weak' | 'dead';
+
+export interface PortfolioPoint {
+  videoId: number;
+  title: string;
+  views: number;
+  followersPer1kViews: number;
+  savesPer1kViews: number | null;
+  promoted: boolean;
+  quadrant: PortfolioQuadrant;
+  recommendation: string;
+}
+
+export function buildPortfolioPoints(rows: VideoReportRow[]): PortfolioPoint[] {
+  const eligible = rows.filter(
+    (r) => r.latest.views !== null && r.latest.views > 0 && r.followersPer1kViews !== null,
+  );
+  if (eligible.length === 0) return [];
+
+  const medianV = median(eligible.map((r) => r.latest.views as number));
+  const medianF = median(eligible.map((r) => r.followersPer1kViews as number));
+  if (medianV === null || medianF === null) return [];
+
+  return eligible.map((r) => {
+    const views = r.latest.views!;
+    const f1k = r.followersPer1kViews!;
+    const highViews = views >= medianV;
+    const highF1k = f1k >= medianF;
+
+    let quadrant: PortfolioQuadrant;
+    let recommendation: string;
+    if (highViews && highF1k) {
+      quadrant = 'star';
+      recommendation = 'Repeat and consider promoting.';
+    } else if (!highViews && highF1k) {
+      quadrant = 'niche-gem';
+      recommendation = 'Improve packaging or test with small promotion.';
+    } else if (highViews && !highF1k) {
+      quadrant = 'viral-but-weak';
+      recommendation = 'Do not scale until conversion improves.';
+    } else {
+      quadrant = 'dead';
+      recommendation = 'Do not repeat without a major change.';
+    }
+
+    return {
+      videoId: r.video.id,
+      title: r.video.title,
+      views,
+      followersPer1kViews: f1k,
+      savesPer1kViews: r.savesPer1kViews,
+      promoted: r.promoted,
+      quadrant,
+      recommendation,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Promotion ROI
+// ---------------------------------------------------------------------------
+
+export type PromotionVerdict = 'scale' | 'watch' | 'stop' | 'missing-data';
+
+export interface PromotionReportRow {
+  videoId: number;
+  title: string;
+  views: number | null;
+  followersPer1kViews: number | null;
+  totalBudget: number | null;
+  promotionFollowers: number | null;
+  costPerFollower: number | null;
+  depthPct: number | null;
+  verdict: PromotionVerdict;
+  reason: string;
+}
+
+export function buildPromotionReport(rows: VideoReportRow[]): PromotionReportRow[] {
+  const promoted = rows.filter((r) => r.promoted);
+  if (promoted.length === 0) return [];
+
+  const medianCpf = median(
+    promoted.map((r) => r.costPerPromotionFollower).filter((v): v is number => v !== null),
+  );
+  const medianF1k = median(
+    rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+  );
+
+  return promoted.map((r): PromotionReportRow => {
+    const hasBudget = r.totalPromotionBudget !== null;
+    const hasFollowers = r.totalPromotionFollowers !== null;
+
+    if (!hasBudget || !hasFollowers) {
+      const missing =
+        !hasBudget && !hasFollowers
+          ? 'budget and followers gained'
+          : !hasBudget
+            ? 'budget'
+            : 'followers gained';
+      return {
+        videoId: r.video.id,
+        title: r.video.title,
+        views: r.latest.views,
+        followersPer1kViews: r.followersPer1kViews,
+        totalBudget: r.totalPromotionBudget,
+        promotionFollowers: r.totalPromotionFollowers,
+        costPerFollower: null,
+        depthPct: r.latest.depthPct,
+        verdict: 'missing-data',
+        reason: `Add ${missing} to evaluate this promotion.`,
+      };
+    }
+
+    const cpf = r.costPerPromotionFollower;
+    const depth = r.latest.depthPct;
+    const f1k = r.followersPer1kViews;
+
+    const isExpensive = cpf !== null && medianCpf !== null && cpf >= medianCpf * 1.5;
+    const isWeakOrganic = f1k !== null && medianF1k !== null && f1k < medianF1k * 0.75;
+    const isShallowDepth = depth !== null && depth < 25;
+
+    if (isExpensive || isWeakOrganic || isShallowDepth) {
+      const reasons: string[] = [];
+      if (isExpensive) reasons.push('cost per follower is well above your median');
+      if (isWeakOrganic) reasons.push('organic conversion is below average');
+      if (isShallowDepth) reasons.push('watch depth is below 25%');
+      return {
+        videoId: r.video.id,
+        title: r.video.title,
+        views: r.latest.views,
+        followersPer1kViews: f1k,
+        totalBudget: r.totalPromotionBudget,
+        promotionFollowers: r.totalPromotionFollowers,
+        costPerFollower: cpf,
+        depthPct: depth,
+        verdict: 'stop',
+        reason: `Stop scaling: ${reasons.join('; ')}.`,
+      };
+    }
+
+    const isGoodCost = cpf !== null && medianCpf !== null && cpf <= medianCpf;
+    const isGoodOrganic = f1k !== null && medianF1k !== null && f1k >= medianF1k;
+    const isGoodDepth = depth === null || depth >= 35;
+
+    if (isGoodCost && isGoodOrganic && isGoodDepth) {
+      return {
+        videoId: r.video.id,
+        title: r.video.title,
+        views: r.latest.views,
+        followersPer1kViews: f1k,
+        totalBudget: r.totalPromotionBudget,
+        promotionFollowers: r.totalPromotionFollowers,
+        costPerFollower: cpf,
+        depthPct: depth,
+        verdict: 'scale',
+        reason:
+          'Cost is at or below median and organic conversion is strong. Good candidate to scale.',
+      };
+    }
+
+    return {
+      videoId: r.video.id,
+      title: r.video.title,
+      views: r.latest.views,
+      followersPer1kViews: f1k,
+      totalBudget: r.totalPromotionBudget,
+      promotionFollowers: r.totalPromotionFollowers,
+      costPerFollower: cpf,
+      depthPct: depth,
+      verdict: 'watch',
+      reason: 'Performance is within normal range. Keep monitoring.',
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Account growth attribution
+// ---------------------------------------------------------------------------
+
+export type AccountGrowthEventKind = 'video-published' | 'promotion' | 'follower-spike';
+
+export interface AccountGrowthEvent {
+  id: string;
+  date: string;
+  kind: AccountGrowthEventKind;
+  title: string;
+  description: string;
+  relatedVideoId?: number;
+}
+
+export function buildAccountGrowthEvents(
+  rows: VideoReportRow[],
+  globalUpdates: GlobalUpdate[],
+): AccountGrowthEvent[] {
+  const events: AccountGrowthEvent[] = [];
+
+  for (const row of rows) {
+    if (row.video.publishedAt !== null) {
+      events.push({
+        id: `video-${row.video.id}`,
+        date: row.video.publishedAt,
+        kind: 'video-published',
+        title: row.video.title,
+        description: 'Video published.',
+        relatedVideoId: row.video.id,
+      });
+    }
+  }
+
+  for (const row of rows) {
+    for (const promo of row.video.promotions) {
+      const parts: string[] = [];
+      if (promo.budget !== null) parts.push(`Budget: ${promo.budget}`);
+      if (promo.followersGained !== null) parts.push(`Followers gained: ${promo.followersGained}`);
+      events.push({
+        id: `promo-${promo.id}`,
+        date: promo.recordedAt,
+        kind: 'promotion',
+        title: `Promotion: "${row.video.title}"`,
+        description: parts.length > 0 ? parts.join('. ') + '.' : 'Promotion recorded.',
+        relatedVideoId: row.video.id,
+      });
+    }
+  }
+
+  if (globalUpdates.length >= 2) {
+    const sorted = [...globalUpdates].sort(
+      (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime(),
+    );
+    const posDeltas: number[] = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const delta = sorted[i]!.followers - sorted[i - 1]!.followers;
+      if (delta > 0) posDeltas.push(delta);
+    }
+    const medianPosDelta = median(posDeltas);
+    if (medianPosDelta !== null && medianPosDelta > 0) {
+      for (let i = 1; i < sorted.length; i++) {
+        const delta = sorted[i]!.followers - sorted[i - 1]!.followers;
+        if (delta > 0 && delta >= medianPosDelta * 2) {
+          events.push({
+            id: `spike-${sorted[i]!.id}`,
+            date: sorted[i]!.recordedAt,
+            kind: 'follower-spike',
+            title: 'Follower spike',
+            description: `+${delta} followers since previous update. Worth reviewing what happened near this date.`,
+          });
+        }
+      }
+    }
+  }
+
+  return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
