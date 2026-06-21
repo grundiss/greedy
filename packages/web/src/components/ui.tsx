@@ -66,3 +66,31 @@ export function Card({ title, children }: { title?: string; children: ReactNode 
     </section>
   );
 }
+
+export function Modal({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-4xl overflow-auto rounded-[2rem] bg-white p-6 shadow-2xl shadow-slate-900/30 max-h-[calc(100vh-4rem)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
