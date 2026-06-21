@@ -28,7 +28,16 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
 
 export interface FetchedManifest {
   manifest: UpdateManifest;
-  manifestUrl: string;
+  // Base URL that relative archive URLs are resolved against. This is the
+  // ORIGINAL feed URL, NOT the post-redirect `res.url`. On GitHub Releases the
+  // feed URL (github.com/.../releases/download/<tag>/manifest.json) 302-redirects
+  // to a *signed, single-asset* URL on release-assets.githubusercontent.com with
+  // a `?jwt=…&sig=…` token. Resolving a relative archive name against that
+  // redirected URL drops the token and rewrites the opaque path, so the archive
+  // request comes back as HTTP 618 `jwt:jwt-not-provided`. The stable github.com
+  // feed URL, by contrast, mints a fresh token for whatever asset you request —
+  // so relative resolution must happen against it, not against where it landed.
+  baseUrl: string;
 }
 
 // Fetches, parses, and authenticates the manifest. Throws if the signature does
@@ -40,21 +49,22 @@ export async function fetchManifest(feedUrl: string): Promise<FetchedManifest> {
   if (!verifyManifestSignature(manifest)) {
     throw new Error('manifest signature verification FAILED — refusing the update');
   }
-  return { manifest, manifestUrl: res.url || feedUrl };
+  return { manifest, baseUrl: feedUrl };
 }
 
 export type ProgressFn = (receivedBytes: number, totalBytes: number) => void;
 
 // Streams the archive to `destPath`, counting bytes for progress. The archive
-// URL may be relative to the manifest URL (so a manifest is host-portable).
-// Returns the number of bytes written. Does NOT verify — caller hashes the file.
+// URL may be relative, resolved against `baseUrl` (the original feed URL) so a
+// manifest is host-portable. Returns bytes written. Does NOT verify — caller
+// hashes the file.
 export async function downloadArchive(
   manifest: UpdateManifest,
-  manifestUrl: string,
+  baseUrl: string,
   destPath: string,
   onProgress?: ProgressFn,
 ): Promise<number> {
-  const url = new URL(manifest.archive.url, manifestUrl).toString();
+  const url = new URL(manifest.archive.url, baseUrl).toString();
   const res = await fetchWithTimeout(url);
   if (!res.ok || !res.body) throw new Error(`archive fetch failed: HTTP ${res.status}`);
 

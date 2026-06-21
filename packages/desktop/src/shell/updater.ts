@@ -71,7 +71,7 @@ export class Updater {
     emit({ phase: 'checking' });
 
     const active = store.activeVersion();
-    const { manifest, manifestUrl } = await fetchManifest(UPDATE_FEED_URL);
+    const { manifest, baseUrl } = await fetchManifest(UPDATE_FEED_URL);
     const target = manifest.version;
 
     // Already current, or older, or a version we've already tried and rejected.
@@ -107,7 +107,7 @@ export class Updater {
       receivedBytes: 0,
       totalBytes: manifest.archive.size,
     });
-    await downloadArchive(manifest, manifestUrl, archivePath, (receivedBytes, totalBytes) =>
+    await downloadArchive(manifest, baseUrl, archivePath, (receivedBytes, totalBytes) =>
       emit({ phase: 'downloading', version: target, receivedBytes, totalBytes }),
     );
 
