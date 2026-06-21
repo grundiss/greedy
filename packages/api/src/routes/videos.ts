@@ -5,6 +5,7 @@ import type {
   NewUpdateInput,
   NewVideoInput,
   SoundType,
+  UpdateVideoInput,
   Update,
   Video,
   VideoWithUpdates,
@@ -92,6 +93,23 @@ function toDateOrNull(value: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function videoValuesFromInput(body: NewVideoInput | UpdateVideoInput) {
+  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  if (!title) return null;
+
+  return {
+    title,
+    description: body.description?.trim() || null,
+    durationSeconds: toIntOrNull(body.durationSeconds),
+    tags: Array.isArray(body.tags) ? body.tags.map((t) => t.trim()).filter(Boolean) : [],
+    publishedAt: toDateOrNull(body.publishedAt),
+    hasFace: toBoolOrNull(body.hasFace),
+    hookType: toEnumOrNull(body.hookType, HOOK_TYPES),
+    soundType: toEnumOrNull(body.soundType, SOUND_TYPES),
+    subtitles: toBoolOrNull(body.subtitles),
+  };
+}
+
 export async function videoRoutes(app: FastifyInstance): Promise<void> {
   // Log an account-level update, such as the current follower count.
   app.post('/global-updates', async (request, reply): Promise<GlobalUpdate | undefined> => {
@@ -129,30 +147,40 @@ export async function videoRoutes(app: FastifyInstance): Promise<void> {
   // Create a video.
   app.post('/videos', async (request, reply): Promise<Video | undefined> => {
     const body = (request.body ?? {}) as NewVideoInput;
-    const title = typeof body.title === 'string' ? body.title.trim() : '';
-    if (!title) {
+    const values = videoValuesFromInput(body);
+    if (!values) {
       reply.code(400);
       return reply.send({ error: 'BadRequest', message: 'title is required' });
     }
 
-    const [row] = await app.db
-      .insert(videos)
-      .values({
-        title,
-        description: body.description?.trim() || null,
-        durationSeconds: toIntOrNull(body.durationSeconds),
-        tags: Array.isArray(body.tags) ? body.tags.map((t) => t.trim()).filter(Boolean) : [],
-        publishedAt: toDateOrNull(body.publishedAt),
-        hasFace: toBoolOrNull(body.hasFace),
-        hookType: toEnumOrNull(body.hookType, HOOK_TYPES),
-        soundType: toEnumOrNull(body.soundType, SOUND_TYPES),
-        subtitles: toBoolOrNull(body.subtitles),
-      })
-      .returning();
+    const [row] = await app.db.insert(videos).values(values).returning();
 
     reply.code(201);
     return serializeVideo(row!);
   });
+
+  // Edit video metadata.
+  app.patch<{ Params: { id: string } }>(
+    '/videos/:id',
+    async (request, reply): Promise<Video | undefined> => {
+      const id = Number(request.params.id);
+      const [video] = await app.db.select().from(videos).where(eq(videos.id, id));
+      if (!video) {
+        reply.code(404);
+        return reply.send({ error: 'NotFound', message: 'video not found' });
+      }
+
+      const body = (request.body ?? {}) as UpdateVideoInput;
+      const values = videoValuesFromInput(body);
+      if (!values) {
+        reply.code(400);
+        return reply.send({ error: 'BadRequest', message: 'title is required' });
+      }
+
+      const [row] = await app.db.update(videos).set(values).where(eq(videos.id, id)).returning();
+      return serializeVideo(row!);
+    },
+  );
 
   // Get a single video with its full time series (for reports).
   app.get<{ Params: { id: string } }>(
