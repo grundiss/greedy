@@ -43,6 +43,8 @@ export interface NewVideoInput {
   subtitles?: boolean | null;
 }
 
+export type UpdateVideoInput = NewVideoInput;
+
 export interface Update {
   id: number;
   videoId: number;

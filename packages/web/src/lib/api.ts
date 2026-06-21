@@ -5,6 +5,7 @@ import type {
   NewUpdateInput,
   NewVideoInput,
   Update,
+  UpdateVideoInput,
   Video,
   VideoWithUpdates,
 } from '@greedy/shared';
@@ -47,6 +48,8 @@ export const api = {
   getVideo: (id: number) => request<VideoWithUpdates>(`/videos/${id}`),
   createVideo: (input: NewVideoInput) =>
     request<Video>('/videos', { method: 'POST', body: JSON.stringify(input) }),
+  updateVideo: (id: number, input: UpdateVideoInput) =>
+    request<Video>(`/videos/${id}`, { method: 'PATCH', body: JSON.stringify(input) }),
   deleteVideo: (id: number) => request<void>(`/videos/${id}`, { method: 'DELETE' }),
   exportDb: () => request<string>('/db/export'),
   importDb: (sql: string) =>
