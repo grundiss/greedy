@@ -3,6 +3,11 @@
 
 // Mirrors src/shell/types.ts UpdateStatus in @greedy/desktop. Kept as a local
 // copy because web cannot import from the desktop package.
+export interface UpdateStatusLogEntry {
+  at: string;
+  status: UpdateStatus;
+}
+
 export type UpdateStatus =
   | { phase: 'idle' }
   | { phase: 'checking' }
@@ -22,6 +27,7 @@ export interface GreedyBridge {
   updatedTo: string | null;
   onUpdateStatus(cb: (status: UpdateStatus) => void): () => void;
   checkForUpdates(): Promise<void>;
+  getUpdateStatusLog(): Promise<UpdateStatusLogEntry[]>;
 }
 
 declare global {

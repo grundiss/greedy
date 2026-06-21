@@ -29,8 +29,14 @@ registerAppScheme();
 const runtime = new Runtime();
 let updater: Updater | null = null;
 let isQuitting = false;
+const updateStatusLog: Array<{ at: string; status: UpdateStatus }> = [];
+const MAX_UPDATE_STATUS_LOG_ENTRIES = 200;
 
 function emit(status: UpdateStatus): void {
+  updateStatusLog.push({ at: new Date().toISOString(), status });
+  if (updateStatusLog.length > MAX_UPDATE_STATUS_LOG_ENTRIES) {
+    updateStatusLog.splice(0, updateStatusLog.length - MAX_UPDATE_STATUS_LOG_ENTRIES);
+  }
   log.info('status:', status.phase, 'version' in status ? (status.version ?? '') : '');
   getWindow()?.webContents.send('greedy:update-status', status);
 }
@@ -100,8 +106,14 @@ async function start(): Promise<void> {
 
   // Manual "check now" from the renderer (updates are automatic regardless).
   ipcMain.handle('greedy:check-for-updates', async () => {
-    await updater?.checkAndApply();
+    if (!updater) {
+      emit({ phase: 'error', error: 'Updater is not ready yet' });
+      return;
+    }
+    await updater.checkAndApply();
   });
+
+  ipcMain.handle('greedy:get-update-status-log', () => updateStatusLog);
 
   updater = new Updater({
     runtime,

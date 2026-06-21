@@ -26,6 +26,8 @@ export interface GreedyBridge {
   onUpdateStatus(cb: (status: unknown) => void): () => void;
   // Optional manual "check now"; updates are automatic regardless.
   checkForUpdates(): Promise<void>;
+  // Snapshot of recent update lifecycle events for diagnostics.
+  getUpdateStatusLog(): Promise<unknown[]>;
 }
 
 const bridge: GreedyBridge = {
@@ -40,6 +42,9 @@ const bridge: GreedyBridge = {
   },
   checkForUpdates() {
     return ipcRenderer.invoke('greedy:check-for-updates') as Promise<void>;
+  },
+  getUpdateStatusLog() {
+    return ipcRenderer.invoke('greedy:get-update-status-log') as Promise<unknown[]>;
   },
 };
 
