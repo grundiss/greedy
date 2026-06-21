@@ -58,6 +58,36 @@ export function Button({
   );
 }
 
+export function IconButton({
+  icon,
+  label,
+  variant = 'ghost',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  icon: ReactNode;
+  label: string;
+  variant?: 'primary' | 'ghost';
+}) {
+  const baseStyles =
+    'inline-flex h-9 w-9 items-center justify-center rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 active:scale-95 disabled:pointer-events-none disabled:opacity-50';
+  const variantStyles =
+    variant === 'primary'
+      ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-sm'
+      : 'border border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-600 hover:shadow-sm';
+
+  return (
+    <button
+      type="button"
+      {...props}
+      className={`${baseStyles} ${variantStyles} ${props.className ?? ''}`}
+      title={label}
+      aria-label={label}
+    >
+      {icon}
+    </button>
+  );
+}
+
 export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

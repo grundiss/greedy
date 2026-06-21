@@ -1,9 +1,66 @@
 import type { Video, VideoWithUpdates } from '@greedy/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, TextInput, Button, Modal } from '../components/ui';
+import { Card, TextInput, Button, Modal, IconButton } from '../components/ui';
 import { VideoForm } from '../components/VideoForm';
 import { api } from '../lib/api';
+
+function EditIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+      />
+    </svg>
+  );
+}
+
+function ReportIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z"
+      />
+    </svg>
+  );
+}
+
+function HistoryIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
@@ -169,7 +226,7 @@ export function VideosPage() {
                   <th className="px-4 py-3 font-semibold">Duration</th>
                   <th className="px-4 py-3 font-semibold">Tags</th>
                   <th className="px-4 py-3 font-semibold">Attributes</th>
-                  <th className="w-52 px-4 py-3 font-semibold">Actions</th>
+                  <th className="w-40 px-4 py-3 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -213,34 +270,25 @@ export function VideosPage() {
                       <div>Subtitles: {formatBool(video.subtitles)}</div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="w-auto px-3 py-1.5"
+                      <div className="flex items-center gap-2">
+                        <IconButton
+                          icon={<EditIcon className="h-4 w-4" />}
+                          label="Edit video"
                           onClick={() => {
                             setEditingVideo(video);
                             setIsDialogOpen(true);
                           }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="w-auto px-3 py-1.5"
+                        />
+                        <IconButton
+                          icon={<ReportIcon className="h-4 w-4" />}
+                          label="View report"
                           onClick={() => navigate(`/reports?videoId=${video.id}`)}
-                        >
-                          Report
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="w-auto px-3 py-1.5"
+                        />
+                        <IconButton
+                          icon={<HistoryIcon className="h-4 w-4" />}
+                          label="View updates log"
                           onClick={() => void openEventsDialog(video)}
-                        >
-                          Events
-                        </Button>
+                        />
                       </div>
                     </td>
                   </tr>
