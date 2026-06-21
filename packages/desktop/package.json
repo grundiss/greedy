@@ -1,10 +1,10 @@
 {
   "name": "@greedy/desktop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "description": "Greedy desktop app (Electron)",
-  "author": "OneDay",
+  "author": "Grundiss",
   "main": "dist/main.js",
   "scripts": {
     "build": "node build.mjs",

@@ -3,15 +3,56 @@
 // additionalArguments. Security posture: contextIsolation on, nodeIntegration
 // off, sandbox on, a narrow preload — the renderer can only reach the small
 // surface exposed in preload.ts.
-import { BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as fs from 'node:fs/promises';
 import { APP_ORIGIN } from './config.js';
 
 // preload.cjs is emitted next to the bundled main.js (see build.mjs).
 const preloadPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs');
 
 let current: BrowserWindow | null = null;
+
+interface WindowBounds {
+  width: number;
+  height: number;
+  x?: number;
+  y?: number;
+}
+
+const DEFAULT_BOUNDS: WindowBounds = {
+  width: 1200,
+  height: 800,
+};
+
+function getWindowBoundsPath(): string {
+  return path.join(app.getPath('userData'), 'window-bounds.json');
+}
+
+async function loadWindowBounds(): Promise<WindowBounds> {
+  try {
+    const boundsPath = getWindowBoundsPath();
+    const data = await fs.readFile(boundsPath, 'utf-8');
+    const bounds = JSON.parse(data) as WindowBounds;
+    // Validate that bounds are reasonable
+    if (bounds.width > 300 && bounds.height > 300 && bounds.width < 4000 && bounds.height < 4000) {
+      return bounds;
+    }
+  } catch {
+    // File doesn't exist or is invalid, use defaults
+  }
+  return DEFAULT_BOUNDS;
+}
+
+async function saveWindowBounds(bounds: WindowBounds): Promise<void> {
+  try {
+    const boundsPath = getWindowBoundsPath();
+    await fs.writeFile(boundsPath, JSON.stringify(bounds, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save window bounds:', err);
+  }
+}
 
 export interface WindowContext {
   apiUrl: string;
@@ -32,10 +73,10 @@ function buildArgs(ctx: WindowContext): string[] {
   return args;
 }
 
-export function createWindow(ctx: WindowContext): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 460,
-    height: 900,
+export async function createWindow(ctx: WindowContext): Promise<BrowserWindow> {
+  const bounds = await loadWindowBounds();
+  const windowOptions: Electron.BrowserWindowConstructorOptions = {
+    ...bounds,
     title: 'Greedy',
     webPreferences: {
       preload: preloadPath,
@@ -44,6 +85,19 @@ export function createWindow(ctx: WindowContext): BrowserWindow {
       sandbox: true,
       additionalArguments: buildArgs(ctx),
     },
+  };
+
+  const win = new BrowserWindow(windowOptions);
+
+  // Save window bounds when resized or moved
+  win.on('resized', () => {
+    const newBounds = win.getBounds();
+    void saveWindowBounds(newBounds);
+  });
+
+  win.on('moved', () => {
+    const newBounds = win.getBounds();
+    void saveWindowBounds(newBounds);
   });
 
   // External links open in the user's browser, never a new app window.
@@ -68,9 +122,9 @@ export function getWindow(): BrowserWindow | null {
 // Replace the live window with a fresh one (new preload args, fresh load of the
 // active content). Used after an update or rollback so the renderer reflects the
 // new bundle + API URL without any manual action.
-export function recreateWindow(ctx: WindowContext): BrowserWindow {
+export async function recreateWindow(ctx: WindowContext): Promise<BrowserWindow> {
   const old = current;
-  const next = createWindow(ctx);
+  const next = await createWindow(ctx);
   if (old && !old.isDestroyed() && old !== next) old.destroy();
   return next;
 }

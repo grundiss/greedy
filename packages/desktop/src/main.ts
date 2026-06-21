@@ -96,7 +96,7 @@ async function start(): Promise<void> {
   installAppProtocol(() => store.activePaths()?.web ?? null);
 
   await bootWithRecovery();
-  createWindow(windowContext());
+  await createWindow(windowContext());
 
   // Manual "check now" from the renderer (updates are automatic regardless).
   ipcMain.handle('greedy:check-for-updates', async () => {
@@ -107,7 +107,7 @@ async function start(): Promise<void> {
     runtime,
     appVersion: app.getVersion(),
     emit,
-    recreateWindow: (updatedTo) => recreateWindow(windowContext(updatedTo)),
+    recreateWindow: async (updatedTo) => void (await recreateWindow(windowContext(updatedTo))),
   });
 
   if (CONTENT_UPDATES_ENABLED) {
@@ -126,7 +126,7 @@ app.whenReady().then(
 
     app.on('activate', () => {
       // macOS: re-open a window when the dock icon is clicked and none are open.
-      if (!hasWindow() && runtime.apiUrl) createWindow(windowContext());
+      if (!hasWindow() && runtime.apiUrl) void createWindow(windowContext());
     });
   },
   (err) => log.error('app failed to become ready:', err),

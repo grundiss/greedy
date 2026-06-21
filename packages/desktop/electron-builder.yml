@@ -1,6 +1,6 @@
-appId: org.oneday.greedy
+appId: ru.grundiss.greedy
 productName: Greedy
-copyright: © OneDay
+copyright: © Grundiss
 
 # Pinned explicitly: with Yarn-workspace hoisting, electron lives in the root
 # node_modules and electron-builder can't auto-detect its version. Keep in sync

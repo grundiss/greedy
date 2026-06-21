@@ -28,7 +28,7 @@ export interface UpdaterDeps {
   emit: (status: UpdateStatus) => void;
   // Rebuild the window after the active bundle/API URL changes. `updatedTo` set
   // on a successful update so the UI can show a one-time confirmation.
-  recreateWindow: (updatedTo?: string) => void;
+  recreateWindow: (updatedTo?: string) => Promise<void>;
 }
 
 export class Updater {
@@ -158,7 +158,7 @@ export class Updater {
       store.markKnownGood(target);
       runtime.clearSnapshot();
       store.prune();
-      recreateWindow(target);
+      await recreateWindow(target);
       emit({ phase: 'installed', version: target });
       log.info(`installed content version ${target}`);
     } catch (err) {
@@ -193,7 +193,7 @@ export class Updater {
       await runtime.migrate(paths.migrations);
       await runtime.startServer(paths.server);
       runtime.clearSnapshot();
-      recreateWindow();
+      await recreateWindow();
       emit({
         phase: 'rolled-back',
         failedVersion: failed,
