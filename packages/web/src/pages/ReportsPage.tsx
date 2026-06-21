@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { Card, Field, Select } from '../components/ui';
 import { api } from '../lib/api';
+import { buildVideoReportRows, median } from '../lib/reportAnalytics';
 
 type MetricKey = 'likes' | 'saves' | 'depthPct' | 'views' | 'comments' | 'reposts' | 'newFollowers';
 
@@ -38,6 +39,7 @@ export function ReportsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedVideoId = searchParams.get('videoId') ?? '';
   const [videos, setVideos] = useState<Video[]>([]);
+  const [allVideosWithUpdates, setAllVideosWithUpdates] = useState<VideoWithUpdates[]>([]);
   const [data, setData] = useState<VideoWithUpdates | null>(null);
   const [globalUpdates, setGlobalUpdates] = useState<GlobalUpdate[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -70,9 +72,11 @@ export function ReportsPage() {
 
     api
       .listVideos()
-      .then((vs) => {
+      .then(async (vs) => {
         setVideos(vs);
         setError(null);
+        const withUpdates = await Promise.all(vs.map((v) => api.getVideo(v.id)));
+        setAllVideosWithUpdates(withUpdates);
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load videos'));
   }, []);
@@ -92,6 +96,18 @@ export function ReportsPage() {
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load video'));
   }, [videoId]);
+
+  const reportRows = useMemo(
+    () => buildVideoReportRows(allVideosWithUpdates),
+    [allVideosWithUpdates],
+  );
+  const debugSummary = useMemo(() => {
+    const withUpdates = reportRows.filter((r) => r.dataQuality.hasUpdates).length;
+    const medianF1k = median(
+      reportRows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+    );
+    return { total: reportRows.length, withUpdates, medianF1k };
+  }, [reportRows]);
 
   return (
     <div className="space-y-6">
@@ -118,6 +134,23 @@ export function ReportsPage() {
       </div>
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      {reportRows.length > 0 && (
+        <div className="flex gap-6 rounded-lg border border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-600">
+          <span>
+            <strong className="text-slate-900">{debugSummary.total}</strong> videos
+          </span>
+          <span>
+            <strong className="text-slate-900">{debugSummary.withUpdates}</strong> with updates
+          </span>
+          <span>
+            Median followers/1k views:{' '}
+            <strong className="text-slate-900">
+              {debugSummary.medianF1k !== null ? debugSummary.medianF1k.toFixed(1) : '—'}
+            </strong>
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6">
         <GlobalUpdateChart updates={globalUpdates} />
