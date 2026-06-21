@@ -1,25 +1,30 @@
-// Bundles the Electron main process + the embedded @greedy/api into a single
-// self-contained ESM file (dist/main.js). This sidesteps Yarn-workspace symlink
-// and ESM-resolution issues inside the packaged asar.
+// Bundles the Electron SHELL: the main process (dist/main.js, ESM) and the
+// preload (dist/preload.cjs, CJS). The shell is static infrastructure — it does
+// NOT bundle the app's backend (@greedy/api / fastify): that ships inside content
+// bundles and is loaded dynamically at runtime (see scripts/build-content.mjs).
 //
 // Externals (NOT bundled, resolved from node_modules at runtime):
-//   - electron            provided by the Electron runtime
-//   - electron-updater    CJS; kept external and shipped in node_modules
+//   - electron             provided by the Electron runtime
+//   - electron-updater     CJS; loaded only when shell auto-update is enabled
 //   - @electric-sql/pglite ships .wasm/.data assets → must stay on disk
 //     (electron-builder `asarUnpack`s it)
 import { build } from 'esbuild';
 
-await build({
-  entryPoints: ['src/main.ts'],
+const shared = {
   bundle: true,
   platform: 'node',
-  format: 'esm',
-  // Electron 42 runs a modern Node; match it loosely.
   target: 'node20',
-  outfile: 'dist/main.js',
   external: ['electron', 'electron-updater', '@electric-sql/pglite'],
-  // Provide CJS globals to bundled CommonJS dependencies (fastify, drizzle, …)
-  // that expect `require`/`__dirname`/`__filename` in an ESM output.
+  logLevel: 'info',
+};
+
+// Main process — ESM. The CJS banner provides require/__dirname/__filename to
+// bundled CommonJS deps (drizzle-orm, tar, …) that expect them.
+await build({
+  ...shared,
+  entryPoints: ['src/main.ts'],
+  format: 'esm',
+  outfile: 'dist/main.js',
   banner: {
     js: [
       "import { createRequire as __cjsCreateRequire } from 'node:module';",
@@ -30,5 +35,13 @@ await build({
       'const __dirname = __cjsDirname(__filename);',
     ].join('\n'),
   },
-  logLevel: 'info',
+});
+
+// Preload — CJS (.cjs so it loads regardless of the package "type": "module").
+// Sandboxed; only touches electron's contextBridge/ipcRenderer.
+await build({
+  ...shared,
+  entryPoints: ['src/preload.ts'],
+  format: 'cjs',
+  outfile: 'dist/preload.cjs',
 });

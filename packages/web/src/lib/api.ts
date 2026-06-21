@@ -8,7 +8,14 @@ import type {
   VideoWithUpdates,
 } from '@greedy/shared';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+// In the desktop shell the preload injects the embedded server's loopback URL
+// (window.greedy.apiBaseUrl) — it changes whenever the backend restarts after a
+// content update, so we read it on load of each freshly-created window. In the
+// browser dev app there's no bridge, so fall back to the Vite env / localhost.
+const API_URL =
+  (typeof window !== 'undefined' && window.greedy?.apiBaseUrl) ||
+  import.meta.env.VITE_API_URL ||
+  'http://localhost:3000';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {

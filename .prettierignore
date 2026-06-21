@@ -5,3 +5,7 @@ build
 yarn.lock
 packages/api/drizzle
 coverage
+packages/desktop/content-seed
+packages/desktop/content-build
+packages/desktop/content-dist
+packages/desktop/keys

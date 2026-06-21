@@ -16,10 +16,13 @@ declare module 'fastify' {
 export interface BuildAppOptions {
   // The database to serve queries from (Postgres in dev/server, PGlite on desktop).
   db: AppDb;
-  // Enable permissive CORS. Needed when web is served from a different origin
-  // (dev: Vite on :5173 → API on :3000). Not needed when Fastify serves the SPA
-  // itself (desktop = same origin).
+  // Enable CORS. Needed when web is served from a different origin (dev: Vite on
+  // :5173 → API on :3000; desktop: the SPA loads from the app:// origin while the
+  // API runs on a loopback HTTP port).
   enableCors?: boolean;
+  // Restrict CORS to this origin (or origins). Defaults to reflecting any origin
+  // when unset — fine for dev/loopback. The desktop shell passes its app:// origin.
+  corsOrigin?: string | string[];
   // Absolute path to the built web SPA (packages/web/dist). When set, Fastify
   // serves it and falls back to index.html for client-side routes.
   serveWebRoot?: string;
@@ -34,7 +37,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
   app.decorate('db', opts.db);
 
   if (opts.enableCors) {
-    await app.register(cors, { origin: true });
+    await app.register(cors, { origin: opts.corsOrigin ?? true });
   }
 
   app.get('/health', async (): Promise<HealthResponse> => {

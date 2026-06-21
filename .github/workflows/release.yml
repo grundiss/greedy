@@ -24,15 +24,12 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build (shared → api → web → desktop)
-        env:
-          # Same-origin: the SPA fetches relative paths from the embedded server.
-          VITE_API_URL: ''
-        run: |
-          yarn workspace @greedy/shared build
-          yarn workspace @greedy/api build
-          yarn workspace @greedy/web build
-          yarn workspace @greedy/desktop build
+      # Builds shared → api → web → shell, then assembles the seed content bundle
+      # (content-seed/) that electron-builder ships inside the .app. The committed
+      # public key (src/shell/content-public-key.ts) is the updater's trust root;
+      # no private key is needed to build the shell.
+      - name: Build shell + seed content bundle
+        run: yarn build:desktop
 
       - name: Package + publish to GitHub Releases
         run: yarn workspace @greedy/desktop dist:publish

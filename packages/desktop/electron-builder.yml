@@ -31,13 +31,13 @@ files:
 asarUnpack:
   - '**/node_modules/@electric-sql/pglite/**'
 
-# The built SPA and the SQL migrations are read at runtime from
-# process.resourcesPath (see src/main.ts resolveResources()).
+# The seed content bundle (frontend + backend + migrations + bundle.json),
+# produced by scripts/build-content.mjs. On first launch the shell installs it
+# into userData/content/<version> and serves everything from there; OTA content
+# updates then replace it. See src/shell/content-store.ts (ensureSeeded).
 extraResources:
-  - from: ../web/dist
-    to: web
-  - from: ../api/drizzle
-    to: drizzle
+  - from: content-seed
+    to: content-seed
 
 mac:
   category: public.app-category.productivity
