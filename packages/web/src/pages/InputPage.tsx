@@ -34,17 +34,12 @@ export function InputPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Data input</h2>
-        <p className="mt-1 text-slate-500">
-          Log fresh metrics and add videos without leaving your desk workflow.
-        </p>
+        <p className="mt-1 text-slate-500">Log fresh metrics without leaving your desk workflow.</p>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_minmax(360px,420px)] items-start gap-6">
-        <div className="space-y-6">
-          <LogGlobalUpdateForm />
-          <LogUpdateForm videos={videos} />
-        </div>
-        <AddVideoForm onCreated={refreshVideos} />
+      <div className="grid grid-cols-2 items-start gap-6">
+        <LogGlobalUpdateForm />
+        <LogUpdateForm videos={videos} />
       </div>
     </div>
   );
@@ -189,7 +184,9 @@ function LogUpdateForm({ videos }: { videos: Video[] }) {
       <form onSubmit={submit} className="grid gap-4">
         <Field label="Video">
           <Select value={videoId} onChange={(e) => setVideoId(e.target.value)}>
-            {videos.length === 0 ? <option value="">No videos yet — add one below</option> : null}
+            {videos.length === 0 ? (
+              <option value="">No videos yet - add one in Videos</option>
+            ) : null}
             {videos.map((v) => (
               <option key={v.id} value={v.id}>
                 {v.title}
@@ -252,152 +249,6 @@ function LogUpdateForm({ videos }: { videos: Video[] }) {
         {msg ? <Banner kind={msg.kind} text={msg.text} /> : null}
         <Button type="submit" disabled={busy || videos.length === 0}>
           {busy ? 'Saving…' : 'Save update'}
-        </Button>
-      </form>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function AddVideoForm({ onCreated }: { onCreated: () => void }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [duration, setDuration] = useState('');
-  const [tags, setTags] = useState('');
-  const [publishedAt, setPublishedAt] = useState('');
-  const [hasFace, setHasFace] = useState('');
-  const [hookType, setHookType] = useState('');
-  const [soundType, setSoundType] = useState('');
-  const [subtitles, setSubtitles] = useState('');
-  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
-    if (!title.trim()) {
-      setMsg({ kind: 'err', text: 'Title is required' });
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.createVideo({
-        title: title.trim(),
-        description: description.trim() || null,
-        durationSeconds: duration.trim() === '' ? null : Number(duration),
-        tags: tags
-          .split(/[,\n]/)
-          .map((t) => t.trim())
-          .filter(Boolean),
-        publishedAt: publishedAt ? new Date(publishedAt).toISOString() : null,
-        hasFace: hasFace === '' ? null : hasFace === 'yes',
-        hookType: hookType === '' ? null : (hookType as 'none' | 'question' | 'result'),
-        soundType: soundType === '' ? null : (soundType as 'music' | 'voice'),
-        subtitles: subtitles === '' ? null : subtitles === 'yes',
-      });
-      setMsg({ kind: 'ok', text: 'Video added ✓' });
-      setTitle('');
-      setDescription('');
-      setDuration('');
-      setTags('');
-      setPublishedAt('');
-      setHasFace('');
-      setHookType('');
-      setSoundType('');
-      setSubtitles('');
-      onCreated();
-    } catch (err) {
-      setMsg({ kind: 'err', text: err instanceof Error ? err.message : 'Failed' });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card title="Add a video">
-      <form onSubmit={submit} className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
-          <Field label="Title">
-            <TextInput
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="My new video"
-            />
-          </Field>
-        </div>
-        <div className="col-span-2">
-          <Field label="Short description">
-            <TextInput
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What it's about"
-            />
-          </Field>
-        </div>
-        <Field label="Duration (seconds)">
-          <TextInput
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={duration}
-            onChange={(e) => setDuration(e.target.value)}
-            placeholder="e.g. 45"
-          />
-        </Field>
-        <div className="col-span-2">
-          <Field label="Tags" hint="Comma-separated">
-            <TextInput
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="dance, comedy"
-            />
-          </Field>
-        </div>
-        <div className="col-span-2">
-          <Field label="Published at" hint="When it went live">
-            <TextInput
-              type="datetime-local"
-              value={publishedAt}
-              onChange={(e) => setPublishedAt(e.target.value)}
-            />
-          </Field>
-        </div>
-        <Field label="Has face">
-          <Select value={hasFace} onChange={(e) => setHasFace(e.target.value)}>
-            <option value="">—</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </Select>
-        </Field>
-        <Field label="Hook type">
-          <Select value={hookType} onChange={(e) => setHookType(e.target.value)}>
-            <option value="">—</option>
-            <option value="none">None</option>
-            <option value="question">Question</option>
-            <option value="result">Result</option>
-          </Select>
-        </Field>
-        <Field label="Sound type">
-          <Select value={soundType} onChange={(e) => setSoundType(e.target.value)}>
-            <option value="">—</option>
-            <option value="music">Mostly music</option>
-            <option value="voice">Mostly voice</option>
-          </Select>
-        </Field>
-        <Field label="Subtitles">
-          <Select value={subtitles} onChange={(e) => setSubtitles(e.target.value)}>
-            <option value="">—</option>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </Select>
-        </Field>
-        {msg ? (
-          <div className="col-span-2">
-            <Banner kind={msg.kind} text={msg.text} />
-          </div>
-        ) : null}
-        <Button type="submit" disabled={busy} className="col-span-2">
-          {busy ? 'Saving…' : 'Add video'}
         </Button>
       </form>
     </Card>
