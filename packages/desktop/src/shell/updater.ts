@@ -17,7 +17,7 @@ import { downloadArchive, extractTarGz, fetchManifest } from './download.js';
 import { log } from './logger.js';
 import { stagingDir, versionDir } from './paths.js';
 import type { Runtime } from './runtime.js';
-import { gte, isNewer } from './semver.js';
+import { isNewer, satisfiesMinShellVersion } from './semver.js';
 import type { UpdateStatus } from './types.js';
 import { hashesMatch, sha256File } from './verify.js';
 
@@ -85,7 +85,7 @@ export class Updater {
       return;
     }
     // The bundle may require a newer shell than is installed.
-    if (!gte(appVersion, manifest.minShellVersion)) {
+    if (!satisfiesMinShellVersion(appVersion, manifest.minShellVersion)) {
       const msg = `content ${target} needs shell >= ${manifest.minShellVersion} (have ${appVersion})`;
       log.warn(msg);
       emit({ phase: 'error', version: target, error: msg });

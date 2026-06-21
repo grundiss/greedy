@@ -34,3 +34,10 @@ export function isNewer(candidate: string, current: string): boolean {
 export function gte(a: string, b: string): boolean {
   return compareVersions(a, b) >= 0;
 }
+
+export function satisfiesMinShellVersion(appVersion: string, minShellVersion: string): boolean {
+  if (gte(appVersion, minShellVersion)) return true;
+  const pa = parse(appVersion);
+  const pb = parse(minShellVersion);
+  return pa.nums[0] === pb.nums[0] && pa.nums[1] === pb.nums[1];
+}
