@@ -14,6 +14,7 @@ export type DurationBucket =
   | 'unknown';
 
 export type Confidence = 'low' | 'medium' | 'high';
+export type Recommendation = 'repeat' | 'test-more' | 'avoid' | 'insufficient-data';
 
 export interface VideoReportRow {
   video: VideoWithUpdates;
@@ -60,6 +61,19 @@ export interface AggregateRow {
   medianSavesPer1kViews: number | null;
   medianRepostsPer1kViews: number | null;
   confidence: Confidence;
+}
+
+export interface ReportSegment {
+  key: string;
+  label: string;
+  videosCount: number;
+  medianViews: number | null;
+  medianDepthPct: number | null;
+  medianFollowersPer1kViews: number | null;
+  medianSavesPer1kViews: number | null;
+  medianRepostsPer1kViews: number | null;
+  confidence: Confidence;
+  recommendation: Recommendation;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +141,18 @@ function confidence(count: number): Confidence {
   if (count >= 7) return 'high';
   if (count >= 3) return 'medium';
   return 'low';
+}
+
+function computeRecommendation(
+  videosCount: number,
+  medianF1k: number | null,
+  overallMedian: number | null,
+): Recommendation {
+  if (medianF1k === null || overallMedian === null) return 'insufficient-data';
+  if (videosCount >= 3 && medianF1k >= overallMedian * 1.25) return 'repeat';
+  if (videosCount < 3 && medianF1k >= overallMedian * 1.25) return 'test-more';
+  if (videosCount >= 3 && medianF1k <= overallMedian * 0.75) return 'avoid';
+  return 'insufficient-data';
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +249,15 @@ export function buildVideoReportRows(videosWithUpdates: VideoWithUpdates[]): Vid
 // Aggregate builders
 // ---------------------------------------------------------------------------
 
-function aggregateRows(key: string, label: string, rows: VideoReportRow[]): AggregateRow {
+function aggregateRows(
+  key: string,
+  label: string,
+  rows: VideoReportRow[],
+  overallMedian: number | null,
+): ReportSegment {
+  const medianF1k = median(
+    rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+  );
   return {
     key,
     label,
@@ -232,9 +266,7 @@ function aggregateRows(key: string, label: string, rows: VideoReportRow[]): Aggr
     medianDepthPct: median(
       rows.map((r) => r.latest.depthPct).filter((v): v is number => v !== null),
     ),
-    medianFollowersPer1kViews: median(
-      rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
-    ),
+    medianFollowersPer1kViews: medianF1k,
     medianSavesPer1kViews: median(
       rows.map((r) => r.savesPer1kViews).filter((v): v is number => v !== null),
     ),
@@ -242,10 +274,14 @@ function aggregateRows(key: string, label: string, rows: VideoReportRow[]): Aggr
       rows.map((r) => r.repostsPer1kViews).filter((v): v is number => v !== null),
     ),
     confidence: confidence(rows.length),
+    recommendation: computeRecommendation(rows.length, medianF1k, overallMedian),
   };
 }
 
-export function aggregateByDuration(rows: VideoReportRow[]): AggregateRow[] {
+export function aggregateByDuration(rows: VideoReportRow[]): ReportSegment[] {
+  const overallMedian = median(
+    rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+  );
   const buckets: DurationBucket[] = [
     '0-15s',
     '16-30s',
@@ -261,12 +297,16 @@ export function aggregateByDuration(rows: VideoReportRow[]): AggregateRow[] {
         b,
         b,
         rows.filter((r) => r.durationBucket === b),
+        overallMedian,
       ),
     )
     .filter((r) => r.videosCount > 0);
 }
 
-export function aggregateByTag(rows: VideoReportRow[]): AggregateRow[] {
+export function aggregateByTag(rows: VideoReportRow[]): ReportSegment[] {
+  const overallMedian = median(
+    rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+  );
   const tagMap = new Map<string, VideoReportRow[]>();
   for (const row of rows) {
     for (const tag of row.video.tags) {
@@ -275,16 +315,40 @@ export function aggregateByTag(rows: VideoReportRow[]): AggregateRow[] {
     }
   }
   return Array.from(tagMap.entries())
-    .map(([tag, tagRows]) => aggregateRows(tag, tag, tagRows))
+    .map(([tag, tagRows]) => aggregateRows(tag, tag, tagRows, overallMedian))
     .sort((a, b) => b.videosCount - a.videosCount);
 }
 
 type CreativeAttribute = 'hasFace' | 'hookType' | 'soundType' | 'subtitles';
 
+function creativeLabel(attribute: CreativeAttribute, key: string): string {
+  switch (attribute) {
+    case 'hasFace':
+      return key === 'true' ? 'Face' : key === 'false' ? 'No face' : 'Unknown';
+    case 'subtitles':
+      return key === 'true' ? 'Subtitles' : key === 'false' ? 'No subtitles' : 'Unknown';
+    case 'hookType': {
+      const map: Record<string, string> = {
+        none: 'No hook',
+        question: 'Question',
+        result: 'Result',
+      };
+      return map[key] ?? (key === 'unknown' ? 'Unknown' : key);
+    }
+    case 'soundType': {
+      const map: Record<string, string> = { music: 'Music', voice: 'Voice' };
+      return map[key] ?? (key === 'unknown' ? 'Unknown' : key);
+    }
+  }
+}
+
 export function aggregateByCreativeAttribute(
   rows: VideoReportRow[],
   attribute: CreativeAttribute,
-): AggregateRow[] {
+): ReportSegment[] {
+  const overallMedian = median(
+    rows.map((r) => r.followersPer1kViews).filter((v): v is number => v !== null),
+  );
   const groupMap = new Map<string, VideoReportRow[]>();
   for (const row of rows) {
     const raw = row.video[attribute];
@@ -293,7 +357,9 @@ export function aggregateByCreativeAttribute(
     groupMap.get(key)!.push(row);
   }
   return Array.from(groupMap.entries())
-    .map(([k, groupRows]) => aggregateRows(k, k, groupRows))
+    .map(([k, groupRows]) =>
+      aggregateRows(k, creativeLabel(attribute, k), groupRows, overallMedian),
+    )
     .sort((a, b) => b.videosCount - a.videosCount);
 }
 
